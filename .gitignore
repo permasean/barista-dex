@@ -61,6 +61,10 @@ desktop.ini
 !sdk/package.json
 !sdk/package-lock.json
 !sdk/tsconfig.json
+!cli/package.json
+!cli/package-lock.json
+!cli/tsconfig.json
+!cli/jest.config.js
 
 # Local configuration
 .env
