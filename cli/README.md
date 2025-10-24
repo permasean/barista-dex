@@ -31,67 +31,43 @@ Before using the CLI, create a configuration file at `~/.barista/config.json`:
 
 ### Portfolio Management
 
-#### Initialize Portfolio
-```bash
-barista init
-```
-Initialize your portfolio account (required before trading).
-
 #### View Portfolio
 ```bash
 barista portfolio
 
-# View another user's portfolio
-barista portfolio --address <user-pubkey>
+# View another trader's portfolio
+barista portfolio --address <trader-address>
 ```
-View your portfolio holdings, equity, margin requirements, and positions.
 
 #### Deposit Collateral
 ```bash
-barista deposit \
-  --mint EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v \
-  --amount 1000000
-```
-Deposit tokens into your Barista vault.
+barista deposit --mint <token-mint> --amount <amount>
 
-**Note:** Amount should be in base units (e.g., for USDC with 6 decimals, 1000000 = 1 USDC)
+# Example: Deposit 100 USDC
+barista deposit --mint EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v --amount 100000000
+```
+
+**Note:** Amounts are in base units (1 USDC = 1000000)
 
 #### Withdraw Collateral
 ```bash
-barista withdraw \
-  --mint EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v \
-  --amount 1000000
+barista withdraw --mint <token-mint> --amount <amount>
 ```
-Withdraw tokens from your Barista vault.
-
-### Trading
-
-#### Execute Trade
-```bash
-barista trade \
-  --slab <slab-address> \
-  --side buy \
-  --size 1000000 \
-  --price 50000000000
-```
-Execute a cross-slab trade (buy or sell).
 
 ### Market Data
 
-#### Get Market Price
+#### Get Price
 ```bash
-barista price --slab <slab-address>
+barista price --slab <market>
 ```
-Get the current best bid/ask from a slab order book.
 
 #### View Order Book
 ```bash
-barista book --slab <slab-address>
+barista book --slab <market>
 
 # Show 20 levels
-barista book --slab <slab-address> --levels 20
+barista book --slab <market> --levels 20
 ```
-View the full order book depth with bids and asks.
 
 ## Options
 
@@ -106,34 +82,22 @@ All commands support the following options:
 ### Complete Trading Workflow
 
 ```bash
-# 1. Initialize your portfolio (first time only)
-barista init
-
-# 2. Deposit USDC collateral (100 USDC = 100000000 base units)
+# 1. Deposit USDC collateral (100 USDC)
 barista deposit \
   --mint EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v \
   --amount 100000000
 
-# 3. Check your portfolio
+# 2. Check your portfolio
 barista portfolio
 
-# 4. View market prices
-barista price --slab SLaBZ6PsDLh2X6HzEoqxFDMqCVcJXDKCNEYuPzUvGPk
+# 3. View market prices
+barista price --slab SLaBZ6Ps...
 
-# 5. View order book depth
-barista book --slab SLaBZ6PsDLh2X6HzEoqxFDMqCVcJXDKCNEYuPzUvGPk --levels 10
+# 4. View order book depth
+barista book --slab SLaBZ6Ps... --levels 10
 
-# 6. Execute a buy trade
-barista trade \
-  --slab SLaBZ6PsDLh2X6HzEoqxFDMqCVcJXDKCNEYuPzUvGPk \
-  --side buy \
-  --size 1000000 \
-  --price 50000000000
-
-# 7. Withdraw funds
-barista withdraw \
-  --mint EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v \
-  --amount 50000000
+# 5. Withdraw funds
+barista withdraw --mint EPjFWdd5... --amount 50000000
 ```
 
 ### Example Output
