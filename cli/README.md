@@ -16,15 +16,56 @@ npx @barista-dex/cli --help
 
 ## Configuration
 
-Before using the CLI, create a configuration file at `~/.barista/config.json`:
+The CLI comes pre-configured with program addresses for devnet, mainnet-beta, and localnet. Configuration is handled through environment variables (similar to binance-cli).
 
-```json
-{
-  "routerProgramId": "RoutR1VdCpHqj89WEMJhb6TkGT9cPfr1rVjhM3e2YQr",
-  "slabProgramId": "SLaBZ6PsDLh2X6HzEoqxFDMqCVcJXDKCNEYuPzUvGPk",
-  "rpcUrl": "https://api.devnet.solana.com",
-  "network": "devnet"
-}
+### Environment Variables
+
+Set these once in your shell profile (`~/.bashrc`, `~/.zshrc`, etc.):
+
+```bash
+# Network: mainnet-beta (default), devnet, or localnet
+export BARISTA_NETWORK=mainnet-beta
+
+# Custom RPC endpoint (optional)
+export BARISTA_RPC_URL=https://my-custom-rpc.com
+
+# Keypair path (optional, defaults to ~/.config/solana/id.json)
+export BARISTA_KEYPAIR=/path/to/keypair.json
+```
+
+**Priority:** CLI flags > Environment variables > Defaults
+
+### Network Selection
+
+You can override environment variables with CLI flags:
+
+```bash
+# Use environment variable (if set) or default to mainnet
+barista portfolio
+
+# Override with CLI flag
+barista portfolio --network devnet
+
+# Use environment variable for network, override RPC
+barista portfolio --url https://my-custom-rpc.com
+```
+
+### Quick Setup
+
+For mainnet trading with default settings (no configuration needed):
+```bash
+# Uses mainnet-beta by default
+barista portfolio
+```
+
+For devnet testing:
+```bash
+# Option 1: Set environment variable (persistent)
+export BARISTA_NETWORK=devnet
+barista portfolio
+
+# Option 2: Use CLI flag (one-time)
+barista portfolio --network devnet
 ```
 
 ## Commands
@@ -73,8 +114,9 @@ barista book --slab <market> --levels 20
 
 All commands support the following options:
 
-- `-k, --keypair <path>` - Path to keypair file (default: `~/.config/solana/id.json`)
-- `-u, --url <url>` - RPC URL (default: from config or `http://localhost:8899`)
+- `-n, --network <network>` - Network to use: `mainnet-beta`, `devnet`, or `localnet` (default: `BARISTA_NETWORK` env var or `mainnet-beta`)
+- `-u, --url <url>` - Custom RPC URL (default: `BARISTA_RPC_URL` env var or network default)
+- `-k, --keypair <path>` - Path to keypair file (default: `BARISTA_KEYPAIR` env var or `~/.config/solana/id.json`)
 - `-h, --help` - Display help for command
 
 ## Examples
