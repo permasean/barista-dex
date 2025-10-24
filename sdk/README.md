@@ -1,6 +1,6 @@
 # @barista-dex/sdk
 
-TypeScript SDK for interacting with Barista DEX on Solana - a perpetual futures exchange with unified cross-margin and LP-run markets.
+TypeScript SDK for interacting with Barista DEX on Solana, a fork of Percolator DEX by Toly
 
 ## Installation
 
