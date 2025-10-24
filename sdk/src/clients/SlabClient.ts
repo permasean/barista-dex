@@ -16,6 +16,11 @@ import {
   Trade,
 } from '../types/slab';
 import {
+  InstrumentInfo,
+  BestPrices,
+  QuoteLevel,
+} from '../types/discovery';
+import {
   serializeU64,
   serializeI64,
   serializeU32,
@@ -284,6 +289,66 @@ export class SlabClient {
     // v0 only has atomic fills, no persistent orders
     // Stub for future expansion
     return [];
+  }
+
+  /**
+   * Get instruments in a slab (v0: returns 1, future: up to 32)
+   * @param slabAddress Slab public key
+   * @returns Array of instrument info
+   */
+  async getInstruments(slabAddress: PublicKey): Promise<InstrumentInfo[]> {
+    const state = await this.getSlabState(slabAddress);
+    if (!state) {
+      throw new Error('Slab not found');
+    }
+
+    // v0: Return single instrument
+    return [{
+      index: 0,
+      pubkey: state.instrument,
+      markPx: state.markPx,
+      contractSize: state.contractSize,
+      takerFeeBps: state.takerFeeBps,
+    }];
+
+    // Future: Parse multiple instruments from slab state when architecture supports it
+  }
+
+  /**
+   * Get best bid/ask prices from slab
+   * Note: In v0, this reads from mark price. Future versions will read from QuoteCache.
+   * @param slabAddress Slab public key
+   * @returns Best bid/ask prices
+   */
+  async getBestPrices(slabAddress: PublicKey): Promise<BestPrices> {
+    const state = await this.getSlabState(slabAddress);
+    if (!state) {
+      throw new Error('Slab not found');
+    }
+
+    // v0: Use mark price as both bid and ask (atomic fills at limit price)
+    // Future: Read QuoteCache from slab account at byte offset
+    const markPrice = state.markPx;
+
+    // Estimate spread as 1 tick (for display purposes)
+    const tick = new BN(1_000_000); // $1 tick
+    const bidPrice = markPrice.sub(tick.divn(2));
+    const askPrice = markPrice.add(tick.divn(2));
+
+    const bid: QuoteLevel = { price: bidPrice, size: new BN(0) };
+    const ask: QuoteLevel = { price: askPrice, size: new BN(0) };
+    const spread = askPrice.sub(bidPrice);
+
+    // Calculate spread in basis points (spread / mid * 10000)
+    const mid = bidPrice.add(askPrice).divn(2);
+    const spreadBps = mid.isZero() ? new BN(0) : spread.mul(new BN(10000)).div(mid);
+
+    return {
+      bid,
+      ask,
+      spread,
+      spreadBps,
+    };
   }
 
   // ============================================================================
