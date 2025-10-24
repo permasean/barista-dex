@@ -1,6 +1,6 @@
 import { Connection, PublicKey } from '@solana/web3.js';
-import { RouterClient } from '@barista-dex/sdk';
-import { loadKeypair, loadConfig, getDefaultKeypairPath } from '../../utils/wallet';
+import { RouterClient, Cluster } from '@barista-dex/sdk';
+import { loadKeypair, getConfig, getDefaultKeypairPath } from '../../utils/wallet';
 import { displayError, formatAmount, formatPublicKey } from '../../utils/display';
 import chalk from 'chalk';
 import ora from 'ora';
@@ -10,20 +10,22 @@ interface PortfolioOptions {
   address?: string;
   keypair?: string;
   url?: string;
+  network?: string;
 }
 
 export async function portfolioCommand(options: PortfolioOptions): Promise<void> {
   const spinner = ora('Loading configuration...').start();
 
   try {
-    // Load configuration
-    const config = loadConfig();
+    // Get cluster configuration (uses env vars if not provided)
+    const cluster = options.network as Cluster | undefined;
+    const config = getConfig(cluster, options.url);
+
     const keypairPath = options.keypair || getDefaultKeypairPath();
     const wallet = loadKeypair(keypairPath);
 
     // Connect to Solana
-    const rpcUrl = options.url || config.rpcUrl || 'http://localhost:8899';
-    const connection = new Connection(rpcUrl, 'confirmed');
+    const connection = new Connection(config.rpcUrl, 'confirmed');
 
     spinner.text = 'Connecting to Solana...';
 

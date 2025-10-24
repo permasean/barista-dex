@@ -1,6 +1,6 @@
 import { Connection, PublicKey } from '@solana/web3.js';
-import { SlabClient } from '@barista-dex/sdk';
-import { loadConfig } from '../../utils/wallet';
+import { SlabClient, Cluster } from '@barista-dex/sdk';
+import { getConfig } from '../../utils/wallet';
 import { displayError, formatPrice } from '../../utils/display';
 import chalk from 'chalk';
 import ora from 'ora';
@@ -11,6 +11,7 @@ interface BookOptions {
   slab: string;
   levels?: string;
   url?: string;
+  network?: string;
 }
 
 export async function bookCommand(options: BookOptions): Promise<void> {
@@ -24,13 +25,13 @@ export async function bookCommand(options: BookOptions): Promise<void> {
       process.exit(1);
     }
 
-    // Load configuration
-    const config = loadConfig();
+    // Load configuration (uses env vars if not provided)
+    const cluster = options.network as Cluster | undefined;
+    const config = getConfig(cluster, options.url);
     const numLevels = parseInt(options.levels || '10', 10);
 
     // Connect to Solana
-    const rpcUrl = options.url || config.rpcUrl || 'http://localhost:8899';
-    const connection = new Connection(rpcUrl, 'confirmed');
+    const connection = new Connection(config.rpcUrl, 'confirmed');
 
     spinner.text = 'Connecting to Solana...';
 

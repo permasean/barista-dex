@@ -1,6 +1,6 @@
 import { Connection, PublicKey } from '@solana/web3.js';
-import { SlabClient } from '@barista-dex/sdk';
-import { loadConfig } from '../../utils/wallet';
+import { SlabClient, Cluster } from '@barista-dex/sdk';
+import { getConfig } from '../../utils/wallet';
 import { displayError, formatPrice, calculateSpread } from '../../utils/display';
 import chalk from 'chalk';
 import ora from 'ora';
@@ -9,6 +9,7 @@ import BN from 'bn.js';
 interface PriceOptions {
   slab: string;
   url?: string;
+  network?: string;
 }
 
 export async function priceCommand(options: PriceOptions): Promise<void> {
@@ -22,12 +23,12 @@ export async function priceCommand(options: PriceOptions): Promise<void> {
       process.exit(1);
     }
 
-    // Load configuration
-    const config = loadConfig();
+    // Load configuration (uses env vars if not provided)
+    const cluster = options.network as Cluster | undefined;
+    const config = getConfig(cluster, options.url);
 
     // Connect to Solana
-    const rpcUrl = options.url || config.rpcUrl || 'http://localhost:8899';
-    const connection = new Connection(rpcUrl, 'confirmed');
+    const connection = new Connection(config.rpcUrl, 'confirmed');
 
     spinner.text = 'Connecting to Solana...';
 

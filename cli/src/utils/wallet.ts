@@ -24,48 +24,46 @@ export function loadKeypair(keypairPath: string): Keypair {
   }
 }
 
+import { Cluster, getProgramIds, getRpcEndpoint } from '@barista-dex/sdk';
+
 /**
- * Load Barista CLI configuration from ~/.barista/config.json
+ * Barista CLI configuration
  */
 export interface BaristaConfig {
   routerProgramId: string;
   slabProgramId: string;
-  rpcUrl?: string;
-  network?: 'devnet' | 'mainnet-beta' | 'localhost';
+  rpcUrl: string;
+  cluster: Cluster;
 }
 
-export function loadConfig(): BaristaConfig {
-  const configPath = path.join(os.homedir(), '.barista', 'config.json');
+/**
+ * Get configuration for the specified cluster
+ * Priority: CLI flags > Environment variables > Defaults
+ *
+ * Environment variables:
+ * - BARISTA_NETWORK: Network to use (mainnet-beta, devnet, localnet)
+ * - BARISTA_RPC_URL: Custom RPC endpoint
+ */
+export function getConfig(cluster?: Cluster, customRpcUrl?: string): BaristaConfig {
+  // Priority: CLI flag > env var > default
+  const finalCluster = cluster || (process.env.BARISTA_NETWORK as Cluster) || 'mainnet-beta';
+  const programIds = getProgramIds(finalCluster);
 
-  if (!fs.existsSync(configPath)) {
-    throw new Error(
-      `Configuration file not found at ${configPath}.\n` +
-      `Please create a config file with the following structure:\n` +
-      `{\n` +
-      `  "routerProgramId": "your-router-program-id",\n` +
-      `  "slabProgramId": "your-slab-program-id",\n` +
-      `  "rpcUrl": "https://api.devnet.solana.com",\n` +
-      `  "network": "devnet"\n` +
-      `}`
-    );
-  }
+  // Priority: CLI flag > env var > default RPC for cluster
+  const rpcUrl = customRpcUrl || process.env.BARISTA_RPC_URL || getRpcEndpoint(finalCluster);
 
-  try {
-    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-
-    if (!config.routerProgramId || !config.slabProgramId) {
-      throw new Error('Config must contain routerProgramId and slabProgramId');
-    }
-
-    return config;
-  } catch (e) {
-    throw new Error(`Failed to parse config from ${configPath}: ${e}`);
-  }
+  return {
+    routerProgramId: programIds.router.toBase58(),
+    slabProgramId: programIds.slab.toBase58(),
+    rpcUrl,
+    cluster: finalCluster,
+  };
 }
 
 /**
  * Get default keypair path
+ * Uses BARISTA_KEYPAIR environment variable if set, otherwise falls back to default Solana keypair
  */
 export function getDefaultKeypairPath(): string {
-  return path.join(os.homedir(), '.config', 'solana', 'id.json');
+  return process.env.BARISTA_KEYPAIR || path.join(os.homedir(), '.config', 'solana', 'id.json');
 }

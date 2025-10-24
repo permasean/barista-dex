@@ -1,7 +1,7 @@
 import { Connection, PublicKey, Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
-import { RouterClient } from '@barista-dex/sdk';
+import { RouterClient, Cluster } from '@barista-dex/sdk';
 import { getAssociatedTokenAddress } from '@solana/spl-token';
-import { loadKeypair, loadConfig, getDefaultKeypairPath } from '../../utils/wallet';
+import { loadKeypair, getConfig, getDefaultKeypairPath } from '../../utils/wallet';
 import { displaySuccess, displayError, getExplorerUrl } from '../../utils/display';
 import chalk from 'chalk';
 import ora from 'ora';
@@ -12,6 +12,7 @@ interface DepositOptions {
   amount: string;
   keypair?: string;
   url?: string;
+  network?: string;
 }
 
 export async function depositCommand(options: DepositOptions): Promise<void> {
@@ -31,16 +32,16 @@ export async function depositCommand(options: DepositOptions): Promise<void> {
       process.exit(1);
     }
 
-    // Load configuration
-    const config = loadConfig();
+    // Load configuration (uses env vars if not provided)
+    const cluster = options.network as Cluster | undefined;
+    const config = getConfig(cluster, options.url);
     const keypairPath = options.keypair || getDefaultKeypairPath();
     const wallet = loadKeypair(keypairPath);
 
     spinner.text = `Using wallet: ${wallet.publicKey.toBase58()}`;
 
     // Connect to Solana
-    const rpcUrl = options.url || config.rpcUrl || 'http://localhost:8899';
-    const connection = new Connection(rpcUrl, 'confirmed');
+    const connection = new Connection(config.rpcUrl, 'confirmed');
 
     spinner.text = 'Connecting to Solana...';
 
@@ -88,7 +89,7 @@ export async function depositCommand(options: DepositOptions): Promise<void> {
     displaySuccess('Deposit successful!');
 
     console.log(chalk.gray(`  Signature: ${signature}`));
-    console.log(chalk.gray(`  Explorer: ${getExplorerUrl(signature, config.network)}`));
+    console.log(chalk.gray(`  Explorer: ${getExplorerUrl(signature, config.cluster)}`));
   } catch (error: any) {
     spinner.fail();
     displayError(`Deposit failed: ${error.message}`);

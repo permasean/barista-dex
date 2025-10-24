@@ -22,8 +22,9 @@ program
   .command('portfolio')
   .description('View portfolio state')
   .option('-a, --address <address>', 'User address (defaults to keypair pubkey)')
+  .option('-n, --network <network>', 'Network: devnet, mainnet-beta, or localnet (default: mainnet-beta)')
   .option('-k, --keypair <path>', 'Path to keypair file')
-  .option('-u, --url <url>', 'RPC URL')
+  .option('-u, --url <url>', 'Custom RPC URL (overrides network default)')
   .action(portfolioCommand);
 
 program
@@ -31,8 +32,9 @@ program
   .description('Deposit collateral to vault')
   .requiredOption('-m, --mint <address>', 'Token mint address')
   .requiredOption('-a, --amount <amount>', 'Amount to deposit (in base units)')
+  .option('-n, --network <network>', 'Network: devnet, mainnet-beta, or localnet (default: mainnet-beta)')
   .option('-k, --keypair <path>', 'Path to keypair file')
-  .option('-u, --url <url>', 'RPC URL')
+  .option('-u, --url <url>', 'Custom RPC URL')
   .action(depositCommand);
 
 program
@@ -40,8 +42,9 @@ program
   .description('Withdraw collateral from vault')
   .requiredOption('-m, --mint <address>', 'Token mint address')
   .requiredOption('-a, --amount <amount>', 'Amount to withdraw (in base units)')
+  .option('-n, --network <network>', 'Network: devnet, mainnet-beta, or localnet (default: mainnet-beta)')
   .option('-k, --keypair <path>', 'Path to keypair file')
-  .option('-u, --url <url>', 'RPC URL')
+  .option('-u, --url <url>', 'Custom RPC URL')
   .action(withdrawCommand);
 
 // ============================================================
@@ -52,7 +55,8 @@ program
   .command('price')
   .description('Get current market price (best bid/ask)')
   .requiredOption('--slab <address>', 'Market address')
-  .option('-u, --url <url>', 'RPC URL')
+  .option('-n, --network <network>', 'Network: devnet, mainnet-beta, or localnet (default: mainnet-beta)')
+  .option('-u, --url <url>', 'Custom RPC URL')
   .action(priceCommand);
 
 program
@@ -60,7 +64,8 @@ program
   .description('View order book depth')
   .requiredOption('--slab <address>', 'Market address')
   .option('-l, --levels <number>', 'Number of price levels to display (default: 10)')
-  .option('-u, --url <url>', 'RPC URL')
+  .option('-n, --network <network>', 'Network: devnet, mainnet-beta, or localnet (default: mainnet-beta)')
+  .option('-u, --url <url>', 'Custom RPC URL')
   .action(bookCommand);
 
 // Parse arguments
