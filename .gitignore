@@ -58,6 +58,9 @@ desktop.ini
 !**/test-fixtures/**/*.json
 !sbf-solana-solana.json
 !Surfpool.toml
+!sdk/package.json
+!sdk/package-lock.json
+!sdk/tsconfig.json
 
 # Local configuration
 .env
