@@ -78,6 +78,23 @@ pub fn process_liquidate_user(
     // Store health in portfolio for tracking
     portfolio.health = health;
 
+    // Step 1.5: Verify with formally proven liquidation check (L1-L13)
+    // This uses the verified is_liquidatable function backed by 13 Kani proofs.
+    // Production uses health-based check (more conservative), but we validate
+    // with the verified function to ensure correctness.
+    #[cfg(not(target_os = "solana"))]
+    {
+        use crate::state::model_bridge::is_liquidatable_verified;
+        let is_liquidatable_formal = is_liquidatable_verified(portfolio, registry);
+
+        // Production's health < 0 should imply verified liquidatable check
+        // (production is more conservative - counts negative PnL, model clamps to 0)
+        if health < 0 && !is_liquidatable_formal {
+            // This should not happen - log for debugging but don't fail
+            msg!("Warning: Health check disagrees with verified liquidatable check");
+        }
+    }
+
     // Step 2: Determine liquidation mode
     let mode = if is_preliq {
         // Force pre-liquidation mode

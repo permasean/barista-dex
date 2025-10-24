@@ -35,3 +35,6 @@ pub mod edge;
 
 #[cfg(kani)]
 pub mod liquidation;
+
+#[cfg(kani)]
+pub mod properties;
