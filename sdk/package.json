@@ -1,7 +1,7 @@
 {
   "name": "@barista-dex/sdk",
-  "version": "0.1.0",
-  "description": "TypeScript SDK for interacting with Barista DEX on Solana",
+  "version": "0.1.1",
+  "description": "TypeScript SDK for interacting with Barista DEX programs on Solana",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -12,12 +12,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-org/barista-dex.git",
+    "url": "https://github.com/permasean/barista-dex",
     "directory": "sdk"
   },
-  "homepage": "https://github.com/your-org/barista-dex/tree/master/sdk#readme",
+  "homepage": "https://github.com/permasean/barista-dex/blob/master/sdk/README.md",
   "bugs": {
-    "url": "https://github.com/your-org/barista-dex/issues"
+    "url": "https://github.com/permasean/barista-dex"
   },
   "keywords": [
     "solana",
