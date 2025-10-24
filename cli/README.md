@@ -27,50 +27,71 @@ Before using the CLI, create a configuration file at `~/.barista/config.json`:
 }
 ```
 
-## Usage
+## Commands
 
-### View Portfolio
+### Portfolio Management
 
-View your portfolio holdings and positions:
+#### Initialize Portfolio
+```bash
+barista init
+```
+Initialize your portfolio account (required before trading).
 
+#### View Portfolio
 ```bash
 barista portfolio
 
 # View another user's portfolio
 barista portfolio --address <user-pubkey>
-
-# Specify custom RPC
-barista portfolio --url https://api.mainnet-beta.solana.com
 ```
+View your portfolio holdings, equity, margin requirements, and positions.
 
-### Deposit Collateral
-
-Deposit tokens into your Barista vault:
-
+#### Deposit Collateral
 ```bash
 barista deposit \
   --mint EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v \
   --amount 1000000
-
-# With custom keypair
-barista deposit \
-  --mint EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v \
-  --amount 1000000 \
-  --keypair ~/my-wallet.json
 ```
+Deposit tokens into your Barista vault.
 
 **Note:** Amount should be in base units (e.g., for USDC with 6 decimals, 1000000 = 1 USDC)
 
-### View Market Price
+#### Withdraw Collateral
+```bash
+barista withdraw \
+  --mint EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v \
+  --amount 1000000
+```
+Withdraw tokens from your Barista vault.
 
-Get the current best bid/ask from a slab order book:
+### Trading
 
+#### Execute Trade
+```bash
+barista trade \
+  --slab <slab-address> \
+  --side buy \
+  --size 1000000 \
+  --price 50000000000
+```
+Execute a cross-slab trade (buy or sell).
+
+### Market Data
+
+#### Get Market Price
 ```bash
 barista price --slab <slab-address>
-
-# Example
-barista price --slab SLaBZ6PsDLh2X6HzEoqxFDMqCVcJXDKCNEYuPzUvGPk
 ```
+Get the current best bid/ask from a slab order book.
+
+#### View Order Book
+```bash
+barista book --slab <slab-address>
+
+# Show 20 levels
+barista book --slab <slab-address> --levels 20
+```
+View the full order book depth with bids and asks.
 
 ## Options
 
@@ -82,13 +103,42 @@ All commands support the following options:
 
 ## Examples
 
-### Check portfolio balance
+### Complete Trading Workflow
 
 ```bash
+# 1. Initialize your portfolio (first time only)
+barista init
+
+# 2. Deposit USDC collateral (100 USDC = 100000000 base units)
+barista deposit \
+  --mint EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v \
+  --amount 100000000
+
+# 3. Check your portfolio
 barista portfolio
+
+# 4. View market prices
+barista price --slab SLaBZ6PsDLh2X6HzEoqxFDMqCVcJXDKCNEYuPzUvGPk
+
+# 5. View order book depth
+barista book --slab SLaBZ6PsDLh2X6HzEoqxFDMqCVcJXDKCNEYuPzUvGPk --levels 10
+
+# 6. Execute a buy trade
+barista trade \
+  --slab SLaBZ6PsDLh2X6HzEoqxFDMqCVcJXDKCNEYuPzUvGPk \
+  --side buy \
+  --size 1000000 \
+  --price 50000000000
+
+# 7. Withdraw funds
+barista withdraw \
+  --mint EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v \
+  --amount 50000000
 ```
 
-Output:
+### Example Output
+
+**Portfolio:**
 ```
 📊 Portfolio Summary
 
@@ -105,36 +155,20 @@ Output:
 └─────────────────────────┴──────────────────────────────┘
 ```
 
-### Deposit USDC
-
-```bash
-# Deposit 100 USDC (100 * 10^6 = 100000000)
-barista deposit \
-  --mint EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v \
-  --amount 100000000
+**Order Book:**
 ```
+📖 Order Book (SLaBZ6Ps...)
 
-Output:
-```
-✅ Deposit successful!
-  Signature: 2ZE7t...
-  Explorer: https://explorer.solana.com/tx/2ZE7t...?cluster=devnet
-```
+┌────────────────────┬────────────────────┬─────┬────────────────────┬────────────────────┐
+│ Bid Size           │ Bid Price          │     │ Ask Price          │ Ask Size           │
+├────────────────────┼────────────────────┼─────┼────────────────────┼────────────────────┤
+│ 10.500000          │ 50000.000000       │     │ 50010.000000       │ 8.250000           │
+│ 5.250000           │ 49990.000000       │     │ 50020.000000       │ 12.000000          │
+└────────────────────┴────────────────────┴─────┴────────────────────┴────────────────────┘
 
-### Check market prices
-
-```bash
-barista price --slab SLaBZ6PsDLh2X6HzEoqxFDMqCVcJXDKCNEYuPzUvGPk
-```
-
-Output:
-```
-💰 Market Prices
-
-  Best Bid: 50000.000000 (size: 10.000000)
-  Best Ask: 50010.000000 (size: 5.000000)
-  Spread: 10.000000 (0.02%)
-  Mid Price: 50005.000000
+Spread: 10.000000 (0.02%)
+Total Bid Depth: 15 levels
+Total Ask Depth: 12 levels
 ```
 
 ## Development
