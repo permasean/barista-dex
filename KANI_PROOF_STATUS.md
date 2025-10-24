@@ -1,14 +1,16 @@
 # Kani Formal Verification Status
 
-**Date**: 2025-10-24
-**Status**: 20 of 20 proofs passing (100% ✅)
-**Total Verification Time**: <30 seconds
+**Date**: 2025-10-24 (Updated with explicit property proofs)
+**Status**: 26 of 26 proofs passing (100% ✅)
+**Total Verification Time**: <35 seconds
 
 ---
 
 ## Executive Summary
 
-After optimizing generator bounds and fixing a margin check bug, **all 20 proofs** now complete in **0.17s - 3.6s each**, down from hours/never. This makes Kani verification practical for regular use.
+After optimizing generator bounds and fixing a margin check bug, **all 26 proofs** now complete in **0.02s - 3.6s each**, down from hours/never. This makes Kani verification practical for regular use.
+
+**New**: Added 6 explicit property proofs for documentation and auditing (I5+, I5++, I5+++, I7+, I8+, I9+)
 
 ### Key Achievement
 
@@ -50,6 +52,19 @@ After optimizing generator bounds and fixing a margin check bug, **all 20 proofs
 | **L11** | Atomic progress/no-op | 2.11s | ✅ PASS |
 | **L12** | Socialize→liquidate safe | 3.56s | ✅ PASS |
 | **L13** | Withdraw doesn't create liq | 1.86s | ✅ PASS |
+
+### Explicit Property Proofs (6/6) - Documentation & Clarity
+
+| Proof | Property | Time | Status |
+|-------|----------|------|--------|
+| **I5+** | PNL decay determinism | 0.82s | ✅ PASS |
+| **I5++** | Warmup monotonicity | 0.74s | ✅ PASS |
+| **I5+++** | Warmup bounded by PnL | 0.06s | ✅ PASS |
+| **I7+** | User isolation | 1.55s | ✅ PASS |
+| **I8+** | Equity consistency | 0.02s | ✅ PASS |
+| **I9+** | Single-user conservation | 1.83s | ✅ PASS |
+
+**Note**: These properties are implicitly covered by existing proofs but made explicit for auditing and documentation purposes.
 
 ---
 

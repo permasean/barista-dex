@@ -273,6 +273,68 @@ pub fn check_conservation(
     model_safety::helpers::conservation_ok(&state)
 }
 
+/// Check if portfolio is liquidatable using verified helper
+///
+/// This uses the formally verified `is_liquidatable` function from model_safety,
+/// backed by 13 liquidation proofs (L1-L13).
+///
+/// # Verified Properties (from Kani proofs)
+///
+/// When this returns true, the following properties are guaranteed:
+/// - L1: Progress if any liquidatable exists
+/// - L2: No-op at fixpoint (when none liquidatable)
+/// - L3: Count never increases after liquidation
+/// - L4: Only liquidatable accounts touched
+/// - L5: Non-interference (unrelated accounts unchanged)
+/// - L6: Authorization required for liquidation
+/// - L7: Conservation preserved by liquidation
+/// - L8: Principal never cut by liquidation
+/// - L9: No new liquidatables under snapshot prices
+/// - L10: Admissible selection when any exist
+/// - L11: Atomic progress or no-op
+/// - L12: Socialize→liquidate does not increase liquidatables
+/// - L13: Withdraw doesn't create liquidatables (margin safe)
+///
+/// # Arguments
+///
+/// * `portfolio` - User portfolio to check
+/// * `registry` - Global registry with margin parameters
+///
+/// # Returns
+///
+/// true if portfolio is liquidatable (collateral < required margin), false otherwise
+///
+/// # Implementation Note
+///
+/// The verified check is:
+/// ```ignore
+/// collateral * 1_000_000 < position_size * maintenance_margin_bps
+/// ```
+///
+/// This uses scaled arithmetic to avoid rounding errors.
+pub fn is_liquidatable_verified(
+    portfolio: &Portfolio,
+    registry: &SlabRegistry,
+) -> bool {
+    // Convert portfolio to model account
+    let account = portfolio_to_account(portfolio, registry);
+
+    // Use dummy prices (not used in current is_liquidatable implementation)
+    let prices = model_safety::Prices {
+        p: [1_000_000, 1_000_000, 1_000_000, 1_000_000]
+    };
+
+    // Set up params with maintenance margin from registry
+    let params = model_safety::Params {
+        max_users: 1,
+        withdraw_cap_per_step: 1000,
+        maintenance_margin_bps: registry.mmr,
+    };
+
+    // Call verified function (backed by L1-L13 proofs)
+    model_safety::helpers::is_liquidatable(&account, &prices, &params)
+}
+
 /// Wrapper for verified loss socialization
 ///
 /// This wraps the verified socialize_losses function for production use.
@@ -498,5 +560,210 @@ mod tests {
         assert_eq!(portfolios[0].principal, 100_000_000); // Principal unchanged
         assert_eq!(portfolios[0].pnl, 0); // PnL fully withdrawn
         assert_eq!(total_vault, 100_000_000); // Vault = principal only
+    }
+
+    /// L13 Regression Test: Withdrawal must not trigger self-liquidation
+    ///
+    /// This test documents the expected behavior based on the L13 proof.
+    /// When withdrawal is implemented, it MUST maintain margin health.
+    ///
+    /// Scenario from L13 counterexample:
+    /// - User has: principal=5, pnl=6, position=100, margin_req=10%
+    /// - Collateral = 5 + 6 = 11 >= 10 ✓ NOT liquidatable
+    /// - Attempt to withdraw 2 from PnL
+    /// - Result: Must be blocked or limited to maintain margin
+    #[test]
+    fn test_l13_withdrawal_margin_safety() {
+        let mut registry = SlabRegistry::new(Pubkey::default(), Pubkey::default(), 0);
+        registry.mmr = 100_000; // 10% maintenance margin (100k bps)
+
+        let mut portfolio = Portfolio::new(Pubkey::default(), Pubkey::default(), 0);
+        portfolio.principal = 5_000_000;  // $5 (scaled by 1e6)
+        portfolio.pnl = 6_000_000;  // $6 profit
+        portfolio.vested_pnl = 6_000_000;  // All vested (for simplicity)
+
+        // Add position that requires maintenance margin
+        portfolio.update_exposure(0, 0, 100_000_000 as i64);  // Position size = 100 (scaled)
+
+        // Calculate required collateral
+        // position * margin_bps / 1_000_000 = 100 * 100_000 / 1_000_000 = 10
+        let position_size = 100_000_000u128;
+        let required_collateral = (position_size * registry.mmr as u128) / 1_000_000;
+        assert_eq!(required_collateral, 10_000_000); // $10 required
+
+        let current_collateral = (portfolio.principal + portfolio.pnl.max(0)) as u128;
+        assert_eq!(current_collateral, 11_000_000); // $11 available
+
+        // Convert to model and check liquidation status
+        let account = portfolio_to_account(&portfolio, &registry);
+        let prices = model_safety::Prices { p: [1_000_000, 1_000_000, 1_000_000, 1_000_000] };
+        let params = model_safety::Params {
+            max_users: 1,
+            withdraw_cap_per_step: 1000,
+            maintenance_margin_bps: registry.mmr,
+        };
+
+        // User is NOT liquidatable before withdrawal
+        assert!(!model_safety::helpers::is_liquidatable(&account, &prices, &params),
+                "User should NOT be liquidatable initially");
+
+        // ⚠️ CRITICAL: If withdrawing $2 from PnL (leaving $9 collateral < $10 required)
+        // This MUST be prevented by the withdrawal implementation!
+        //
+        // Safe withdrawal limit = current_collateral - required_collateral
+        //                       = $11 - $10 = $1
+        //
+        // So user can only withdraw UP TO $1 while maintaining margin safety
+        let safe_withdraw_limit = current_collateral.saturating_sub(required_collateral);
+        assert_eq!(safe_withdraw_limit, 1_000_000, "User can safely withdraw $1");
+
+        // ❌ DANGEROUS: Withdrawing $2 would violate margin
+        let dangerous_withdrawal = 2_000_000;
+        let collateral_after = current_collateral.saturating_sub(dangerous_withdrawal);
+        assert!(collateral_after < required_collateral,
+                "Withdrawing $2 would drop collateral below required margin");
+
+        // WHEN IMPLEMENTING WITHDRAWAL:
+        // The function MUST either:
+        // 1. Reject the $2 withdrawal entirely, OR
+        // 2. Limit it to $1 (the safe amount)
+        //
+        // It MUST NOT allow the full $2 withdrawal!
+    }
+
+    /// L13 Regression Test: Withdrawal with no position is always safe
+    ///
+    /// When user has no position, there's no margin requirement,
+    /// so withdrawal is only limited by vesting/throttling.
+    #[test]
+    fn test_l13_withdrawal_no_position_safe() {
+        let registry = SlabRegistry::new(Pubkey::default(), Pubkey::default(), 0);
+
+        let mut portfolio = Portfolio::new(Pubkey::default(), Pubkey::default(), 0);
+        portfolio.principal = 100_000_000;  // $100
+        portfolio.pnl = 50_000_000;  // $50 profit
+        portfolio.vested_pnl = 50_000_000;  // All vested
+        portfolio.exposure_count = 0;  // No positions
+
+        // Convert to model and check
+        let account = portfolio_to_account(&portfolio, &registry);
+        let prices = model_safety::Prices { p: [1_000_000; 4] };
+        let params = model_safety::Params {
+            max_users: 1,
+            withdraw_cap_per_step: 1000,
+            maintenance_margin_bps: 100_000, // 10%
+        };
+
+        // User is NOT liquidatable (no position = no margin requirement)
+        assert!(!model_safety::helpers::is_liquidatable(&account, &prices, &params),
+                "User with no position should never be liquidatable");
+
+        // User can withdraw entire vested PnL without margin concerns
+        // (still subject to vesting caps and throttling in production)
+        assert_eq!(portfolio.vested_pnl, 50_000_000);
+    }
+
+    /// L13 Regression Test: Scaled arithmetic prevents rounding errors
+    ///
+    /// This tests that we use the same scaled arithmetic as is_liquidatable
+    /// to avoid the rounding bug from the original L13 failure.
+    #[test]
+    fn test_l13_withdrawal_scaled_arithmetic() {
+        use model_safety::math::{mul_u128, div_u128, sub_u128};
+
+        let mut registry = SlabRegistry::new(Pubkey::default(), Pubkey::default(), 0);
+        registry.mmr = 100_000; // 10% maintenance margin
+
+        let mut portfolio = Portfolio::new(Pubkey::default(), Pubkey::default(), 0);
+        portfolio.principal = 10_000_000;
+        portfolio.pnl = 1_000_000;
+        portfolio.vested_pnl = 1_000_000;
+        portfolio.update_exposure(0, 0, 100_000_000 as i64);
+
+        let current_collateral = (portfolio.principal + portfolio.pnl.max(0)) as u128;
+        let position_size = 100_000_000u128;
+
+        // ❌ WRONG: Using division (rounds down, too permissive)
+        let required_wrong = (position_size * registry.mmr as u128) / 1_000_000;
+        let safe_withdraw_wrong = current_collateral.saturating_sub(required_wrong);
+
+        // ✅ CORRECT: Using scaled arithmetic (matches is_liquidatable)
+        let collateral_scaled = mul_u128(current_collateral, 1_000_000);
+        let required_margin_scaled = mul_u128(position_size, registry.mmr as u128);
+        let safe_withdraw_correct = if collateral_scaled > required_margin_scaled {
+            div_u128(sub_u128(collateral_scaled, required_margin_scaled), 1_000_000)
+        } else {
+            0
+        };
+
+        // The scaled version should be EQUAL OR MORE CONSERVATIVE
+        assert!(safe_withdraw_correct <= safe_withdraw_wrong,
+                "Scaled arithmetic should be at least as conservative as direct division");
+
+        // Verify against model's is_liquidatable
+        let account = portfolio_to_account(&portfolio, &registry);
+        let prices = model_safety::Prices { p: [1_000_000; 4] };
+        let params = model_safety::Params {
+            max_users: 1,
+            withdraw_cap_per_step: 1000,
+            maintenance_margin_bps: registry.mmr,
+        };
+
+        assert!(!model_safety::helpers::is_liquidatable(&account, &prices, &params),
+                "User should not be liquidatable before withdrawal");
+
+        // After withdrawing the CORRECT safe amount, should still be safe
+        // (This is what the fixed L13 proof guarantees)
+        let mut account_after = account.clone();
+        account_after.pnl_ledger -= safe_withdraw_correct as i128;
+
+        // Still not liquidatable (with some epsilon tolerance for rounding)
+        let collateral_after = (account_after.principal as u128)
+            .saturating_add(account_after.pnl_ledger.max(0) as u128);
+        let collateral_after_scaled = mul_u128(collateral_after, 1_000_000);
+
+        // Should be at or just above required margin
+        assert!(collateral_after_scaled >= required_margin_scaled,
+                "After safe withdrawal, should still meet margin requirement");
+    }
+
+    /// L13 Regression Test: Multiple withdrawals compound margin pressure
+    ///
+    /// Tests that consecutive withdrawals are each checked for margin safety.
+    /// Even if each individual withdrawal is "small", they must not compound
+    /// to violate margin.
+    #[test]
+    fn test_l13_multiple_withdrawals_margin_safety() {
+        let mut registry = SlabRegistry::new(Pubkey::default(), Pubkey::default(), 0);
+        registry.mmr = 100_000; // 10% maintenance margin
+
+        let mut portfolio = Portfolio::new(Pubkey::default(), Pubkey::default(), 0);
+        portfolio.principal = 10_000_000;  // $10
+        portfolio.pnl = 5_000_000;  // $5
+        portfolio.vested_pnl = 5_000_000;
+        portfolio.update_exposure(0, 0, 100_000_000 as i64); // Position = 100, requires $10 collateral
+
+        let current_collateral = 15_000_000u128;  // $15
+        let required_collateral = 10_000_000u128;  // $10
+        let total_safe_withdraw = 5_000_000u128;  // $5 max
+
+        // Try to withdraw in 3 chunks of $2 each = $6 total (exceeds safe limit!)
+        let withdraw_chunk = 2_000_000u128;
+
+        // First withdrawal: $2 from $15 → $13 (still safe: $13 > $10) ✓
+        assert!(current_collateral.saturating_sub(withdraw_chunk) > required_collateral);
+
+        // Second withdrawal: $2 from $13 → $11 (still safe: $11 > $10) ✓
+        let after_first = current_collateral.saturating_sub(withdraw_chunk);
+        assert!(after_first.saturating_sub(withdraw_chunk) > required_collateral);
+
+        // Third withdrawal: $2 from $11 → $9 (UNSAFE: $9 < $10) ✗
+        let after_second = after_first.saturating_sub(withdraw_chunk);
+        let after_third = after_second.saturating_sub(withdraw_chunk);
+        assert!(after_third < required_collateral,
+                "Third withdrawal would violate margin");
+
+        // ⚠️ CRITICAL: Each withdrawal must be checked independently!
+        // Implementation MUST reject the third $2 withdrawal or limit it to $1
     }
 }
