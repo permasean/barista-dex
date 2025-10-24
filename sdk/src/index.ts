@@ -34,6 +34,15 @@ export {
   Trade,
 } from './types/slab';
 
+// Types - Discovery
+export {
+  SlabInfo,
+  InstrumentInfo,
+  QuoteLevel,
+  BestPrices,
+  QuoteCache,
+} from './types/discovery';
+
 // Utils - Serialization
 export {
   serializeU64,

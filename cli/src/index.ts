@@ -4,8 +4,14 @@ import { Command } from 'commander';
 import { depositCommand } from './commands/router/deposit';
 import { withdrawCommand } from './commands/router/withdraw';
 import { portfolioCommand } from './commands/router/portfolio';
-import { priceCommand } from './commands/market/price';
+import { priceCommand as legacyPriceCommand } from './commands/market/price';
 import { bookCommand } from './commands/market/book';
+import { buyCommand } from './commands/trading/buy';
+import { sellCommand } from './commands/trading/sell';
+import { slabsCommand } from './commands/discovery/slabs';
+import { slabInfoCommand } from './commands/discovery/slabInfo';
+import { instrumentsCommand } from './commands/discovery/instruments';
+import { priceCommand } from './commands/discovery/price';
 
 const program = new Command();
 
@@ -48,24 +54,77 @@ program
   .action(withdrawCommand);
 
 // ============================================================
+// Trading Commands (v0 - Atomic Fills)
+// ============================================================
+
+program
+  .command('buy')
+  .description('Execute a buy order (atomic fill - no resting orders in v0)')
+  .requiredOption('--slab <address>', 'Slab market address')
+  .requiredOption('-q, --quantity <amount>', 'Quantity to buy (in base units)')
+  .requiredOption('-p, --price <price>', 'Limit price (maximum price willing to pay)')
+  .option('-n, --network <network>', 'Network: devnet, mainnet-beta, or localnet (default: mainnet-beta)')
+  .option('-k, --keypair <path>', 'Path to keypair file')
+  .option('-u, --url <url>', 'Custom RPC URL (overrides network default)')
+  .action(buyCommand);
+
+program
+  .command('sell')
+  .description('Execute a sell order (atomic fill - no resting orders in v0)')
+  .requiredOption('--slab <address>', 'Slab market address')
+  .requiredOption('-q, --quantity <amount>', 'Quantity to sell (in base units)')
+  .requiredOption('-p, --price <price>', 'Limit price (minimum price willing to accept)')
+  .option('-n, --network <network>', 'Network: devnet, mainnet-beta, or localnet (default: mainnet-beta)')
+  .option('-k, --keypair <path>', 'Path to keypair file')
+  .option('-u, --url <url>', 'Custom RPC URL (overrides network default)')
+  .action(sellCommand);
+
+// ============================================================
+// Discovery Commands
+// ============================================================
+
+program
+  .command('slabs')
+  .description('List all available LP-run slabs')
+  .option('-n, --network <network>', 'Network: devnet, mainnet-beta, or localnet (default: mainnet-beta)')
+  .option('-u, --url <url>', 'Custom RPC URL (overrides network default)')
+  .action(slabsCommand);
+
+program
+  .command('slab')
+  .description('Show detailed information about a slab')
+  .requiredOption('--slab <address>', 'Slab address')
+  .option('-n, --network <network>', 'Network: devnet, mainnet-beta, or localnet (default: mainnet-beta)')
+  .option('-u, --url <url>', 'Custom RPC URL (overrides network default)')
+  .action(slabInfoCommand);
+
+program
+  .command('instruments')
+  .description('List instruments (markets) in a slab (v0: returns 1, future: up to 32)')
+  .requiredOption('--slab <address>', 'Slab address')
+  .option('-n, --network <network>', 'Network: devnet, mainnet-beta, or localnet (default: mainnet-beta)')
+  .option('-u, --url <url>', 'Custom RPC URL (overrides network default)')
+  .action(instrumentsCommand);
+
+// ============================================================
 // Market Data Commands
 // ============================================================
 
 program
   .command('price')
   .description('Get current market price (best bid/ask)')
-  .requiredOption('--slab <address>', 'Market address')
+  .requiredOption('--slab <address>', 'Slab address')
   .option('-n, --network <network>', 'Network: devnet, mainnet-beta, or localnet (default: mainnet-beta)')
-  .option('-u, --url <url>', 'Custom RPC URL')
+  .option('-u, --url <url>', 'Custom RPC URL (overrides network default)')
   .action(priceCommand);
 
 program
   .command('book')
-  .description('View order book depth')
-  .requiredOption('--slab <address>', 'Market address')
+  .description('View order book depth (v0: stub - no persistent orders)')
+  .requiredOption('--slab <address>', 'Slab address')
   .option('-l, --levels <number>', 'Number of price levels to display (default: 10)')
   .option('-n, --network <network>', 'Network: devnet, mainnet-beta, or localnet (default: mainnet-beta)')
-  .option('-u, --url <url>', 'Custom RPC URL')
+  .option('-u, --url <url>', 'Custom RPC URL (overrides network default)')
   .action(bookCommand);
 
 // Parse arguments

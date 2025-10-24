@@ -19,6 +19,9 @@ import {
   CancelLpOrdersParams,
 } from '../types/router';
 import {
+  SlabInfo,
+} from '../types/discovery';
+import {
   serializeU64,
   serializeU128,
   serializeI64,
@@ -145,6 +148,106 @@ export class RouterClient {
     }
 
     return this.deserializeVault(accountInfo.data);
+  }
+
+  /**
+   * Get all registered slabs from on-chain accounts
+   * Note: In v0, this requires scanning for slab accounts by owner (slab program).
+   * Future: Registry will maintain a list of registered slabs.
+   * @param slabProgramId Slab program ID to scan for
+   * @returns Array of slab info
+   */
+  async getAllSlabs(slabProgramId: PublicKey): Promise<SlabInfo[]> {
+    // Get all accounts owned by the slab program
+    const accounts = await this.connection.getProgramAccounts(slabProgramId, {
+      filters: [
+        {
+          dataSize: 4096, // Approximate size of SlabState in v0 (~4KB)
+        },
+      ],
+    });
+
+    const slabs: SlabInfo[] = [];
+
+    for (const { pubkey, account } of accounts) {
+      try {
+        // Parse slab state (simplified for v0)
+        // Assuming SlabState layout: magic(8) + version(4) + seqno(4) + program_id(32) + lp_owner(32) + router_id(32) + instrument(32) + ...
+        let offset = 0;
+
+        // Skip magic (8 bytes)
+        offset += 8;
+
+        // Skip version (4 bytes)
+        offset += 4;
+
+        // Read seqno (4 bytes)
+        const seqno = account.data.readUInt32LE(offset);
+        offset += 4;
+
+        // Skip program_id (32 bytes)
+        offset += 32;
+
+        // Read lp_owner (32 bytes)
+        const lpOwner = new PublicKey(account.data.slice(offset, offset + 32));
+        offset += 32;
+
+        // Skip router_id (32 bytes)
+        offset += 32;
+
+        // Read instrument (32 bytes)
+        const instrument = new PublicKey(account.data.slice(offset, offset + 32));
+        offset += 32;
+
+        // Read contract_size (8 bytes, i64)
+        const contractSize = new BN(account.data.readBigInt64LE(offset).toString());
+        offset += 8;
+
+        // Skip tick (8 bytes)
+        offset += 8;
+
+        // Skip lot (8 bytes)
+        offset += 8;
+
+        // Read mark_px (8 bytes, i64)
+        const markPx = new BN(account.data.readBigInt64LE(offset).toString());
+        offset += 8;
+
+        // Read taker_fee_bps (8 bytes, i64)
+        const takerFeeBps = new BN(account.data.readBigInt64LE(offset).toString());
+
+        slabs.push({
+          address: pubkey,
+          lpOwner,
+          instrument,
+          markPx,
+          takerFeeBps,
+          contractSize,
+          seqno,
+        });
+      } catch (err) {
+        // Skip invalid accounts
+        continue;
+      }
+    }
+
+    return slabs;
+  }
+
+  /**
+   * Find slabs trading a specific instrument
+   * @param instrumentId Instrument public key
+   * @param slabProgramId Slab program ID to scan
+   * @returns Array of slab addresses
+   */
+  async getSlabsForInstrument(
+    instrumentId: PublicKey,
+    slabProgramId: PublicKey
+  ): Promise<PublicKey[]> {
+    const allSlabs = await this.getAllSlabs(slabProgramId);
+    return allSlabs
+      .filter(s => s.instrument.equals(instrumentId))
+      .map(s => s.address);
   }
 
   // ============================================================================
@@ -523,5 +626,63 @@ export class RouterClient {
       totalWithdrawals,
       balance,
     };
+  }
+
+  // ============================================================================
+  // Convenience Methods for Trading (v0 - Atomic Fills)
+  // ============================================================================
+
+  /**
+   * Build a buy instruction (market order that executes immediately)
+   * V0: Atomic fill only - no resting orders
+   * @param user User's public key
+   * @param slabMarket Slab market to trade on
+   * @param quantity Quantity to buy (in base units)
+   * @param limitPrice Maximum price willing to pay (in quote units)
+   * @param slabProgram Slab program ID
+   * @returns TransactionInstruction
+   */
+  buildBuyInstruction(
+    user: PublicKey,
+    slabMarket: PublicKey,
+    quantity: BN,
+    limitPrice: BN,
+    slabProgram: PublicKey
+  ): TransactionInstruction {
+    const split: SlabSplit = {
+      slabMarket,
+      isBuy: true,
+      size: quantity,
+      price: limitPrice,
+    };
+
+    return this.buildExecuteCrossSlabInstruction(user, [split], slabProgram);
+  }
+
+  /**
+   * Build a sell instruction (market order that executes immediately)
+   * V0: Atomic fill only - no resting orders
+   * @param user User's public key
+   * @param slabMarket Slab market to trade on
+   * @param quantity Quantity to sell (in base units)
+   * @param limitPrice Minimum price willing to accept (in quote units)
+   * @param slabProgram Slab program ID
+   * @returns TransactionInstruction
+   */
+  buildSellInstruction(
+    user: PublicKey,
+    slabMarket: PublicKey,
+    quantity: BN,
+    limitPrice: BN,
+    slabProgram: PublicKey
+  ): TransactionInstruction {
+    const split: SlabSplit = {
+      slabMarket,
+      isBuy: false,
+      size: quantity,
+      price: limitPrice,
+    };
+
+    return this.buildExecuteCrossSlabInstruction(user, [split], slabProgram);
   }
 }
