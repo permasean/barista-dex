@@ -12,10 +12,6 @@ import { slabsCommand } from './commands/discovery/slabs';
 import { slabInfoCommand } from './commands/discovery/slabInfo';
 import { instrumentsCommand } from './commands/discovery/instruments';
 import { priceCommand } from './commands/discovery/price';
-import { initOracleCommand } from './commands/oracle/init';
-import { updateOracleCommand } from './commands/oracle/update';
-import { showOracleCommand } from './commands/oracle/show';
-import { oracleCrankCommand } from './crank/oracle-updater';
 
 const program = new Command();
 
@@ -130,58 +126,6 @@ program
   .option('-n, --network <network>', 'Network: devnet, mainnet-beta, or localnet (default: mainnet-beta)')
   .option('-u, --url <url>', 'Custom RPC URL (overrides network default)')
   .action(bookCommand);
-
-// ============================================================
-// Oracle Commands (Localnet/Devnet)
-// ============================================================
-
-const oracleCmd = program
-  .command('oracle')
-  .description('Oracle management commands (custom oracle for localnet/devnet)');
-
-oracleCmd
-  .command('init')
-  .description('Initialize a new custom oracle')
-  .requiredOption('-i, --instrument <name>', 'Instrument name (e.g., BTC-PERP)')
-  .requiredOption('-p, --price <price>', 'Initial price (e.g., 50000)')
-  .option('-n, --network <network>', 'Network: devnet or localnet (default: localnet)')
-  .option('-k, --keypair <path>', 'Path to payer keypair file')
-  .option('-a, --authority <path>', 'Path to authority keypair (defaults to payer)')
-  .option('-u, --url <url>', 'Custom RPC URL')
-  .action(initOracleCommand);
-
-oracleCmd
-  .command('update')
-  .description('Update oracle price')
-  .requiredOption('-o, --oracle <address>', 'Oracle account address')
-  .requiredOption('-p, --price <price>', 'New price (e.g., 51000)')
-  .option('-c, --confidence <amount>', 'Confidence interval (±amount, defaults to 0.1% of price)')
-  .option('-n, --network <network>', 'Network: devnet or localnet (default: localnet)')
-  .option('-k, --keypair <path>', 'Path to payer keypair file')
-  .option('-a, --authority <path>', 'Path to authority keypair (defaults to payer)')
-  .option('-u, --url <url>', 'Custom RPC URL')
-  .action(updateOracleCommand);
-
-oracleCmd
-  .command('show')
-  .description('Display oracle information')
-  .requiredOption('-o, --oracle <address>', 'Oracle account address')
-  .option('-n, --network <network>', 'Network: devnet, mainnet-beta, or localnet (default: localnet)')
-  .option('-u, --url <url>', 'Custom RPC URL')
-  .action(showOracleCommand);
-
-oracleCmd
-  .command('crank')
-  .description('Start oracle price updater crank (fetches from external APIs)')
-  .requiredOption('-o, --oracle <address>', 'Oracle account address')
-  .requiredOption('-i, --instrument <name>', 'Instrument name (e.g., BTC-PERP, ETH/USD)')
-  .option('-n, --network <network>', 'Network: devnet or localnet (default: localnet)')
-  .option('-k, --keypair <path>', 'Path to payer keypair file')
-  .option('-a, --authority <path>', 'Path to authority keypair (defaults to payer)')
-  .option('-u, --url <url>', 'Custom RPC URL')
-  .option('--interval <ms>', 'Update interval in milliseconds (default: 5000)')
-  .option('--source <source>', 'Price source: coingecko, binance, or coinbase (default: coingecko)')
-  .action(oracleCrankCommand);
 
 // Parse arguments
 program.parse(process.argv);

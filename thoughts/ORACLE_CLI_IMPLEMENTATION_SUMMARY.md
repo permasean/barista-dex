@@ -2,7 +2,7 @@
 
 **Implementation Date**: 2025-01-24
 **Status**: ✅ Completed (Phase 1 - Custom Oracle for Localnet/Devnet)
-**Location**: `cli/src/commands/oracle/` and `cli/src/crank/`
+**Location**: `keeper/src/oracle/` (Rust)
 
 ---
 
@@ -14,26 +14,34 @@ We've successfully implemented **custom oracle management for localnet and devne
 
 #### 1. Oracle CLI Commands
 
-**Location**: `cli/src/commands/oracle/`
+**Location**: `keeper/src/oracle/commands.rs`
 
-- **`init.ts`** - Initialize new custom oracle
-- **`update.ts`** - Update oracle price manually
-- **`show.ts`** - Display oracle information
+- **`init_oracle()`** - Initialize new custom oracle
+- **`update_oracle()`** - Update oracle price manually
+- **`show_oracle()`** - Display oracle information
 
 #### 2. Oracle Crank Service
 
-**Location**: `cli/src/crank/oracle-updater.ts`
+**Location**: `keeper/src/main.rs` (crank command implementation)
 
 - Automated price fetching from external APIs
-- Continuous oracle updates
+- Continuous oracle updates with configurable intervals
 - Supports CoinGecko, Binance, and Coinbase
 
-#### 3. CLI Integration
+#### 3. Price Source Integration
 
-**Location**: `cli/src/index.ts`
+**Location**: `keeper/src/oracle/price_sources.rs`
 
-- Registered all oracle commands under `barista oracle`
-- Added crank command
+- HTTP client integration with reqwest
+- JSON parsing for CoinGecko, Binance, and Coinbase APIs
+- Instrument name mapping
+
+#### 4. CLI Integration
+
+**Location**: `keeper/src/cli.rs` and `keeper/src/main.rs`
+
+- Registered all oracle commands under `percolator-keeper oracle`
+- Uses clap for command-line argument parsing
 
 ---
 
@@ -42,19 +50,19 @@ We've successfully implemented **custom oracle management for localnet and devne
 ### Initialize Oracle
 
 ```bash
-barista oracle init \
+percolator-keeper oracle init \
   --instrument BTC-PERP \
   --price 50000 \
-  --network localnet
+  --rpc-url http://localhost:8899
 ```
 
 **Options**:
 - `-i, --instrument <name>` (required) - Instrument name (e.g., BTC-PERP)
 - `-p, --price <price>` (required) - Initial price (e.g., 50000)
-- `-n, --network <network>` - Network: devnet or localnet (default: localnet)
+- `-r, --rpc-url <url>` - RPC URL (default: http://localhost:8899)
 - `-k, --keypair <path>` - Path to payer keypair file
 - `-a, --authority <path>` - Path to authority keypair (defaults to payer)
-- `-u, --url <url>` - Custom RPC URL
+- `--oracle-program <pubkey>` - Oracle program ID (optional)
 
 **Output**:
 ```
@@ -73,20 +81,20 @@ Oracle Details:
 ### Update Oracle Price
 
 ```bash
-barista oracle update \
+percolator-keeper oracle update \
   --oracle 7xK8...9mNv \
   --price 51000 \
-  --network localnet
+  --rpc-url http://localhost:8899
 ```
 
 **Options**:
 - `-o, --oracle <address>` (required) - Oracle account address
 - `-p, --price <price>` (required) - New price (e.g., 51000)
 - `-c, --confidence <amount>` - Confidence interval (±amount, defaults to 0.1% of price)
-- `-n, --network <network>` - Network: devnet or localnet (default: localnet)
+- `-r, --rpc-url <url>` - RPC URL (default: http://localhost:8899)
 - `-k, --keypair <path>` - Path to payer keypair file
 - `-a, --authority <path>` - Path to authority keypair (defaults to payer)
-- `-u, --url <url>` - Custom RPC URL
+- `--oracle-program <pubkey>` - Oracle program ID (optional)
 
 **Output**:
 ```
@@ -102,15 +110,14 @@ Updated Details:
 ### Show Oracle Info
 
 ```bash
-barista oracle show \
+percolator-keeper oracle show \
   --oracle 7xK8...9mNv \
-  --network localnet
+  --rpc-url http://localhost:8899
 ```
 
 **Options**:
 - `-o, --oracle <address>` (required) - Oracle account address
-- `-n, --network <network>` - Network: devnet, mainnet-beta, or localnet (default: localnet)
-- `-u, --url <url>` - Custom RPC URL
+- `-r, --rpc-url <url>` - RPC URL (default: http://localhost:8899)
 
 **Output**:
 ```
@@ -139,23 +146,23 @@ barista oracle show \
 ### Start Oracle Crank
 
 ```bash
-barista oracle crank \
+percolator-keeper oracle crank \
   --oracle 7xK8...9mNv \
   --instrument BTC/USD \
-  --network localnet \
-  --interval 5000 \
+  --rpc-url http://localhost:8899 \
+  --interval 5 \
   --source coingecko
 ```
 
 **Options**:
 - `-o, --oracle <address>` (required) - Oracle account address
 - `-i, --instrument <name>` (required) - Instrument name (e.g., BTC-PERP, ETH/USD)
-- `-n, --network <network>` - Network: devnet or localnet (default: localnet)
+- `-r, --rpc-url <url>` - RPC URL (default: http://localhost:8899)
 - `-k, --keypair <path>` - Path to payer keypair file
 - `-a, --authority <path>` - Path to authority keypair (defaults to payer)
-- `-u, --url <url>` - Custom RPC URL
-- `--interval <ms>` - Update interval in milliseconds (default: 5000)
-- `--source <source>` - Price source: coingecko, binance, or coinbase (default: coingecko)
+- `--oracle-program <pubkey>` - Oracle program ID (optional)
+- `--interval <seconds>` - Update interval in seconds (default: 5)
+- `-s, --source <source>` - Price source: coingecko, binance, or coinbase (default: coingecko)
 
 **Output**:
 ```
@@ -193,24 +200,24 @@ barista oracle crank \
 solana-test-validator
 
 # 2. Initialize oracle for BTC
-barista oracle init \
+percolator-keeper oracle init \
   --instrument BTC-PERP \
   --price 50000 \
-  --network localnet
+  --rpc-url http://localhost:8899
 
 # Save the oracle address from output
 export BARISTA_ORACLE=<ORACLE_ADDRESS>
 
 # 3. Manually update price
-barista oracle update \
+percolator-keeper oracle update \
   --oracle $BARISTA_ORACLE \
   --price 51000 \
-  --network localnet
+  --rpc-url http://localhost:8899
 
 # 4. Check oracle state
-barista oracle show \
+percolator-keeper oracle show \
   --oracle $BARISTA_ORACLE \
-  --network localnet
+  --rpc-url http://localhost:8899
 ```
 
 ### Scenario 2: Automated Oracle Crank
@@ -220,20 +227,20 @@ barista oracle show \
 solana-test-validator
 
 # 2. Initialize oracle
-barista oracle init \
+percolator-keeper oracle init \
   --instrument BTC/USD \
   --price 50000 \
-  --network localnet
+  --rpc-url http://localhost:8899
 
 # Save oracle address
 export BARISTA_ORACLE=<ORACLE_ADDRESS>
 
 # 3. Start oracle crank (runs in foreground)
-barista oracle crank \
+percolator-keeper oracle crank \
   --oracle $BARISTA_ORACLE \
   --instrument BTC/USD \
-  --network localnet \
-  --interval 5000 \
+  --rpc-url http://localhost:8899 \
+  --interval 5 \
   --source coingecko
 
 # The crank will fetch prices every 5 seconds and update the oracle
@@ -244,11 +251,11 @@ barista oracle crank \
 
 ```bash
 # 1. Start crank in background
-nohup barista oracle crank \
+nohup percolator-keeper oracle crank \
   --oracle $BARISTA_ORACLE \
   --instrument BTC/USD \
-  --network localnet \
-  --interval 5000 \
+  --rpc-url http://localhost:8899 \
+  --interval 5 \
   --source coingecko \
   > oracle-crank.log 2>&1 &
 
@@ -364,12 +371,12 @@ export BARISTA_RPC_URL=http://localhost:8899
 
 ```bash
 # Instead of this:
-barista oracle show --oracle 7xK8...9mNv --network localnet
+percolator-keeper oracle show --oracle 7xK8...9mNv --rpc-url http://localhost:8899
 
 # You can do:
 export BARISTA_ORACLE=7xK8...9mNv
-export BARISTA_NETWORK=localnet
-barista oracle show --oracle $BARISTA_ORACLE --network $BARISTA_NETWORK
+export BARISTA_RPC_URL=http://localhost:8899
+percolator-keeper oracle show --oracle $BARISTA_ORACLE --rpc-url $BARISTA_RPC_URL
 ```
 
 ---
@@ -434,16 +441,16 @@ barista oracle show --oracle $BARISTA_ORACLE --network $BARISTA_NETWORK
 ## File Structure
 
 ```
-cli/
+keeper/
 ├── src/
-│   ├── commands/
-│   │   └── oracle/
-│   │       ├── init.ts       # Initialize new oracle
-│   │       ├── update.ts     # Update oracle price
-│   │       └── show.ts       # Display oracle info
-│   ├── crank/
-│   │   └── oracle-updater.ts # Automated price updater
-│   └── index.ts              # CLI entry point (oracle commands registered)
+│   ├── oracle/
+│   │   ├── mod.rs            # Oracle module definition
+│   │   ├── commands.rs       # Init, update, show implementations
+│   │   └── price_sources.rs  # CoinGecko, Binance, Coinbase integration
+│   ├── cli.rs                # CLI argument parsing (clap)
+│   ├── main.rs               # Main entry point with oracle routing
+│   └── config.rs             # Keeper configuration
+└── Cargo.toml                # Dependencies (reqwest, chrono, clap)
 
 programs/
 └── oracle/
@@ -456,7 +463,7 @@ programs/
 
 thoughts/
 ├── ORACLE_INTEGRATION_PLAN.md           # Full production plan (6 phases)
-├── ORACLE_LOCALNET_DEVNET_GUIDE.md      # This guide
+├── ORACLE_LOCALNET_DEVNET_GUIDE.md      # Setup guide
 └── ORACLE_CLI_IMPLEMENTATION_SUMMARY.md # This file
 ```
 
@@ -516,13 +523,13 @@ barista oracle crank \
 **Solution**:
 ```bash
 # Manually update
-barista oracle update --oracle $BARISTA_ORACLE --price <current_price>
+percolator-keeper oracle update --oracle $BARISTA_ORACLE --price <current_price>
 
 # Or start crank for automated updates
-barista oracle crank \
+percolator-keeper oracle crank \
   --oracle $BARISTA_ORACLE \
   --instrument BTC/USD \
-  --interval 5000
+  --interval 5
 ```
 
 ### Issue: "Transaction failed" when updating

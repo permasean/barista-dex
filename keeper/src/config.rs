@@ -37,9 +37,13 @@ impl Config {
     pub fn load() -> Result<Self> {
         let config_path = std::env::var("KEEPER_CONFIG")
             .unwrap_or_else(|_| "keeper-config.toml".to_string());
+        Self::load_from(&config_path)
+    }
 
-        let config_str = std::fs::read_to_string(&config_path)
-            .context(format!("Failed to read config file: {}", config_path))?;
+    /// Load configuration from specific path
+    pub fn load_from(path: &str) -> Result<Self> {
+        let config_str = std::fs::read_to_string(path)
+            .context(format!("Failed to read config file: {}", path))?;
 
         let config: Config = toml::from_str(&config_str)
             .context("Failed to parse config TOML")?;
