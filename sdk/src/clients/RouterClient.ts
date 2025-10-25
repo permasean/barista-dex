@@ -251,6 +251,142 @@ export class RouterClient {
   }
 
   // ============================================================================
+  // Leverage & Margin Validation Helpers
+  // ============================================================================
+
+  /**
+   * Calculate required margin for a position with optional leverage
+   *
+   * @param notional Position notional value (quantity * price)
+   * @param leverage Leverage multiplier (1 = spot, 2-10 = margin). Default: 1 (spot)
+   * @returns Required margin amount
+   *
+   * Examples:
+   * - Spot trading (1x): notional = 1000 USDC -> required = 1000 USDC
+   * - 5x leverage: notional = 1000 USDC -> required = 1000 * 0.1 / 5 = 20 USDC
+   * - 10x leverage: notional = 1000 USDC -> required = 1000 * 0.1 / 10 = 10 USDC
+   */
+  calculateRequiredMargin(notional: BN, leverage: number = 1): BN {
+    if (leverage === 1) {
+      // Spot trading: require full notional
+      return notional;
+    }
+
+    // Margin trading: IMR = 10% hardcoded on-chain
+    const IMR_PCT = 10;
+
+    // required_margin = notional * IMR / leverage
+    // = notional * 0.1 / leverage
+    return notional.mul(new BN(IMR_PCT)).div(new BN(leverage * 100));
+  }
+
+  /**
+   * Validate if user has sufficient margin for a leveraged position
+   *
+   * @param user User's public key
+   * @param quantity Position size (base units)
+   * @param price Limit price (1e6 scale)
+   * @param leverage Leverage multiplier (1 = spot, 2-10 = margin). Default: 1 (spot)
+   * @returns Validation result with available equity and required margin
+   *
+   * @throws Error if portfolio doesn't exist or cannot be fetched
+   */
+  async validateLeveragedPosition(
+    user: PublicKey,
+    quantity: BN,
+    price: BN,
+    leverage: number = 1
+  ): Promise<{
+    valid: boolean;
+    availableEquity: BN;
+    requiredMargin: BN;
+    notional: BN;
+    leverage: number;
+    mode: 'spot' | 'margin';
+  }> {
+    // Validate leverage range
+    if (leverage < 1 || leverage > 10) {
+      throw new Error('Leverage must be between 1x and 10x');
+    }
+
+    // Get portfolio equity
+    const [portfolioPDA] = this.derivePortfolioPDA(user);
+    const portfolio = await this.getPortfolio(portfolioPDA);
+
+    if (!portfolio) {
+      throw new Error('Portfolio not found. Please initialize portfolio first.');
+    }
+
+    // Calculate notional value
+    // notional = quantity * price / 1e6 (price scale factor)
+    const notional = quantity.mul(price).div(new BN(1_000_000));
+
+    // Calculate required margin
+    const requiredMargin = this.calculateRequiredMargin(notional, leverage);
+
+    // Check if equity >= required margin
+    const availableEquity = new BN(portfolio.equity.toString());
+    const valid = availableEquity.gte(requiredMargin);
+
+    return {
+      valid,
+      availableEquity,
+      requiredMargin,
+      notional,
+      leverage,
+      mode: leverage === 1 ? 'spot' : 'margin',
+    };
+  }
+
+  /**
+   * Calculate maximum quantity that can be traded with available equity
+   *
+   * @param user User's public key
+   * @param price Limit price (1e6 scale)
+   * @param leverage Leverage multiplier (1 = spot, 2-10 = margin). Default: 1 (spot)
+   * @returns Maximum tradeable quantity
+   *
+   * Examples:
+   * - equity = 100 USDC, price = 50 USDC, leverage = 1x -> max = 2 units
+   * - equity = 100 USDC, price = 50 USDC, leverage = 5x -> max = 100 units
+   */
+  async calculateMaxQuantity(
+    user: PublicKey,
+    price: BN,
+    leverage: number = 1
+  ): Promise<BN> {
+    // Validate leverage range
+    if (leverage < 1 || leverage > 10) {
+      throw new Error('Leverage must be between 1x and 10x');
+    }
+
+    // Get portfolio equity
+    const [portfolioPDA] = this.derivePortfolioPDA(user);
+    const portfolio = await this.getPortfolio(portfolioPDA);
+
+    if (!portfolio) {
+      throw new Error('Portfolio not found. Please initialize portfolio first.');
+    }
+
+    const availableEquity = new BN(portfolio.equity.toString());
+
+    if (leverage === 1) {
+      // Spot: max_quantity = equity / price * 1e6
+      return availableEquity.mul(new BN(1_000_000)).div(price);
+    }
+
+    // Margin: max_quantity = equity * leverage / (IMR * price) * 1e6
+    // Simplified: equity * leverage * 10 / price
+    const IMR_PCT = 10;
+    return availableEquity
+      .mul(new BN(leverage))
+      .mul(new BN(100))
+      .div(new BN(IMR_PCT))
+      .mul(new BN(1_000_000))
+      .div(price);
+  }
+
+  // ============================================================================
   // Instruction Builders
   // ============================================================================
 
