@@ -5,6 +5,7 @@ pub mod instructions;
 pub mod pda;
 pub mod liquidation;
 pub mod chooser;
+pub mod oracle;
 
 // Always expose entrypoint for testing, but only register as entrypoint when feature enabled
 pub mod entrypoint;
