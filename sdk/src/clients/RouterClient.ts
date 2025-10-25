@@ -255,52 +255,68 @@ export class RouterClient {
   // ============================================================================
 
   /**
-   * Calculate required margin for a position with optional leverage
+   * NEW MODEL: quantity represents margin/equity committed, leverage multiplies it
    *
-   * @param notional Position notional value (quantity * price)
+   * Calculate actual position size from margin committed
+   *
+   * @param marginCommitted Equity user wants to commit (quantity * price in CLI)
    * @param leverage Leverage multiplier (1 = spot, 2-10 = margin). Default: 1 (spot)
-   * @returns Required margin amount
+   * @returns Actual position notional value
    *
    * Examples:
-   * - Spot trading (1x): notional = 1000 USDC -> required = 1000 USDC
-   * - 5x leverage: notional = 1000 USDC -> required = 1000 * 0.1 / 5 = 20 USDC
-   * - 10x leverage: notional = 1000 USDC -> required = 1000 * 0.1 / 10 = 10 USDC
+   * - quantity=100, price=10 -> margin_committed = 1000
+   * - Spot (1x): position = 1000 (buy 1000 worth)
+   * - 5x leverage: position = 5000 (buy 5000 worth with 1000 margin)
+   * - 10x leverage: position = 10000 (buy 10000 worth with 1000 margin)
    */
-  calculateRequiredMargin(notional: BN, leverage: number = 1): BN {
-    if (leverage === 1) {
-      // Spot trading: require full notional
-      return notional;
-    }
-
-    // Margin trading: IMR = 10% hardcoded on-chain
-    const IMR_PCT = 10;
-
-    // required_margin = notional * IMR / leverage
-    // = notional * 0.1 / leverage
-    return notional.mul(new BN(IMR_PCT)).div(new BN(leverage * 100));
+  calculatePositionSize(marginCommitted: BN, leverage: number = 1): BN {
+    return marginCommitted.mul(new BN(leverage));
   }
 
   /**
-   * Validate if user has sufficient margin for a leveraged position
+   * Calculate actual quantity (contracts) to trade based on margin and leverage
+   *
+   * @param quantityInput User's input quantity (represents margin to commit)
+   * @param price Price per unit (1e6 scale)
+   * @param leverage Leverage multiplier. Default: 1 (spot)
+   * @returns Actual quantity to execute on-chain
+   *
+   * Examples:
+   * - Input: qty=100, price=10 USDC, leverage=5x
+   * - Margin committed: 100 * 10 = 1000 USDC
+   * - Position size: 1000 * 5 = 5000 USDC
+   * - Actual quantity: 5000 / 10 = 500 contracts
+   */
+  calculateActualQuantity(quantityInput: BN, price: BN, leverage: number = 1): BN {
+    // margin_committed = quantityInput * price / 1e6
+    // position_size = margin_committed * leverage
+    // actual_quantity = position_size / price * 1e6
+    // Simplified: actual_quantity = quantityInput * leverage
+    return quantityInput.mul(new BN(leverage));
+  }
+
+  /**
+   * Validate if user has sufficient equity for a leveraged trade
    *
    * @param user User's public key
-   * @param quantity Position size (base units)
-   * @param price Limit price (1e6 scale)
+   * @param quantityInput User's input quantity (margin to commit, NOT position size)
+   * @param price Price per unit (1e6 scale)
    * @param leverage Leverage multiplier (1 = spot, 2-10 = margin). Default: 1 (spot)
-   * @returns Validation result with available equity and required margin
+   * @returns Validation result
    *
    * @throws Error if portfolio doesn't exist or cannot be fetched
    */
   async validateLeveragedPosition(
     user: PublicKey,
-    quantity: BN,
+    quantityInput: BN,
     price: BN,
     leverage: number = 1
   ): Promise<{
     valid: boolean;
     availableEquity: BN;
-    requiredMargin: BN;
-    notional: BN;
+    marginCommitted: BN;
+    actualQuantity: BN;
+    positionSize: BN;
     leverage: number;
     mode: 'spot' | 'margin';
   }> {
@@ -317,40 +333,44 @@ export class RouterClient {
       throw new Error('Portfolio not found. Please initialize portfolio first.');
     }
 
-    // Calculate notional value
-    // notional = quantity * price / 1e6 (price scale factor)
-    const notional = quantity.mul(price).div(new BN(1_000_000));
+    // Calculate margin committed: quantity_input * price / 1e6
+    const marginCommitted = quantityInput.mul(price).div(new BN(1_000_000));
 
-    // Calculate required margin
-    const requiredMargin = this.calculateRequiredMargin(notional, leverage);
+    // Calculate actual position size: margin * leverage
+    const positionSize = this.calculatePositionSize(marginCommitted, leverage);
 
-    // Check if equity >= required margin
+    // Calculate actual quantity to trade: quantity_input * leverage
+    const actualQuantity = this.calculateActualQuantity(quantityInput, price, leverage);
+
+    // Check if equity >= margin committed
     const availableEquity = new BN(portfolio.equity.toString());
-    const valid = availableEquity.gte(requiredMargin);
+    const valid = availableEquity.gte(marginCommitted);
 
     return {
       valid,
       availableEquity,
-      requiredMargin,
-      notional,
+      marginCommitted,
+      actualQuantity,
+      positionSize,
       leverage,
       mode: leverage === 1 ? 'spot' : 'margin',
     };
   }
 
   /**
-   * Calculate maximum quantity that can be traded with available equity
+   * Calculate maximum quantity input for available equity
    *
    * @param user User's public key
-   * @param price Limit price (1e6 scale)
+   * @param price Price per unit (1e6 scale)
    * @param leverage Leverage multiplier (1 = spot, 2-10 = margin). Default: 1 (spot)
-   * @returns Maximum tradeable quantity
+   * @returns Maximum quantity user can input (will be leveraged automatically)
    *
    * Examples:
-   * - equity = 100 USDC, price = 50 USDC, leverage = 1x -> max = 2 units
-   * - equity = 100 USDC, price = 50 USDC, leverage = 5x -> max = 100 units
+   * - equity = 1000 USDC, price = 10 USDC, leverage = 1x -> max_input = 100
+   * - equity = 1000 USDC, price = 10 USDC, leverage = 5x -> max_input = 100 (still!)
+   *   (Because input represents margin, actual position will be 500 contracts)
    */
-  async calculateMaxQuantity(
+  async calculateMaxQuantityInput(
     user: PublicKey,
     price: BN,
     leverage: number = 1
@@ -370,20 +390,32 @@ export class RouterClient {
 
     const availableEquity = new BN(portfolio.equity.toString());
 
-    if (leverage === 1) {
-      // Spot: max_quantity = equity / price * 1e6
-      return availableEquity.mul(new BN(1_000_000)).div(price);
+    // max_quantity_input = equity / price * 1e6
+    // Note: leverage doesn't affect this - it just multiplies the actual position
+    return availableEquity.mul(new BN(1_000_000)).div(price);
+  }
+
+  /**
+   * Get market price from slab (uses mark price)
+   *
+   * @param slabMarket Slab market address
+   * @param slabProgramId Slab program ID
+   * @returns Mark price (1e6 scale)
+   */
+  async getMarketPrice(slabMarket: PublicKey, slabProgramId: PublicKey): Promise<BN> {
+    const accountInfo = await this.connection.getAccountInfo(slabMarket);
+
+    if (!accountInfo) {
+      throw new Error(`Slab market not found: ${slabMarket.toBase58()}`);
     }
 
-    // Margin: max_quantity = equity * leverage / (IMR * price) * 1e6
-    // Simplified: equity * leverage * 10 / price
-    const IMR_PCT = 10;
-    return availableEquity
-      .mul(new BN(leverage))
-      .mul(new BN(100))
-      .div(new BN(IMR_PCT))
-      .mul(new BN(1_000_000))
-      .div(price);
+    // Parse slab state to get markPx
+    // Layout: discriminator(8) + version(4) + seqno(4) + program_id(32) + lp_owner(32) +
+    //         router_id(32) + instrument(32) + contract_size(8) + tick(8) + lot(8) + mark_px(8)
+    let offset = 8 + 4 + 4 + 32 + 32 + 32 + 32 + 8 + 8 + 8; // = 176
+
+    const markPx = new BN(accountInfo.data.readBigInt64LE(offset).toString());
+    return markPx;
   }
 
   // ============================================================================

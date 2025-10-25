@@ -10,7 +10,7 @@ import BN from 'bn.js';
 interface SellOptions {
   slab: string;
   quantity: string;
-  price: string;
+  price?: string;  // Optional: if not provided, market order
   leverage?: string;  // Optional: "5x", "10x", etc. Default: 1x (spot)
   keypair?: string;
   url?: string;
@@ -50,15 +50,10 @@ export async function sellCommand(options: SellOptions): Promise<void> {
       process.exit(1);
     }
 
-    if (!options.price) {
-      spinner.fail();
-      displayError('Missing required option: --price <price>');
-      process.exit(1);
-    }
-
     // Parse leverage (default to 1x for spot)
     const leverage = options.leverage ? parseLeverage(options.leverage) : 1;
     const isSpot = leverage === 1;
+    const isMarketOrder = !options.price;
 
     // Load network configuration (uses env vars for overrides)
     const config = getNetworkConfig(options.network);
@@ -85,36 +80,47 @@ export async function sellCommand(options: SellOptions): Promise<void> {
 
     // Parse inputs
     const slabMarket = new PublicKey(options.slab);
-    const quantity = new BN(options.quantity);
-    const limitPrice = new BN(options.price);
+    const quantityInput = new BN(options.quantity);
 
-    // Validate position with leverage
+    // Get price (either from user or fetch market price)
+    let price: BN;
+    if (isMarketOrder) {
+      spinner.text = 'Fetching market price...';
+      price = await client.getMarketPrice(slabMarket, config.slabProgramId);
+      console.log(chalk.gray(`  Market price: ${price.toString()}`));
+    } else {
+      price = new BN(options.price!);
+    }
+
+    // Validate position with NEW leverage model
+    // quantityInput represents margin to commit, leverage multiplies it
     spinner.text = 'Validating position...';
     const validation = await client.validateLeveragedPosition(
       wallet.publicKey,
-      quantity,
-      limitPrice,
+      quantityInput,
+      price,
       leverage
     );
 
     if (!validation.valid) {
       spinner.fail();
       console.log();
-      displayError('Insufficient margin for this position');
+      displayError('Insufficient equity for this trade');
       console.log();
-      console.log(chalk.gray('  Position Details:'));
+      console.log(chalk.gray('  Trade Details:'));
       console.log(chalk.gray(`    Mode: ${validation.mode === 'spot' ? 'Spot (1x)' : `Margin (${leverage}x)`}`));
-      console.log(chalk.gray(`    Notional: ${validation.notional.toString()} units`));
-      console.log(chalk.gray(`    Required margin: ${validation.requiredMargin.toString()} units`));
+      console.log(chalk.gray(`    Quantity input: ${quantityInput.toString()} units`));
+      console.log(chalk.gray(`    Price: ${price.toString()}`));
+      console.log(chalk.gray(`    Margin committed: ${validation.marginCommitted.toString()} units`));
+      console.log(chalk.gray(`    Actual position size: ${validation.positionSize.toString()} units`));
+      console.log(chalk.gray(`    Actual quantity traded: ${validation.actualQuantity.toString()} contracts`));
       console.log(chalk.red(`    Available equity: ${validation.availableEquity.toString()} units`));
       console.log();
 
-      if (isSpot) {
-        console.log(chalk.yellow('  Tip: For spot trading, you need the full notional value.'));
-        console.log(chalk.yellow('       Try using leverage (--leverage 5x) to trade with less collateral.'));
-      } else {
-        const maxQty = await client.calculateMaxQuantity(wallet.publicKey, limitPrice, leverage);
-        console.log(chalk.yellow(`  Tip: Maximum quantity at ${leverage}x leverage: ${maxQty.toString()} units`));
+      const maxQty = await client.calculateMaxQuantityInput(wallet.publicKey, price, leverage);
+      console.log(chalk.yellow(`  Tip: Maximum quantity input: ${maxQty.toString()} units`));
+      if (leverage > 1) {
+        console.log(chalk.yellow(`       (This will open ${maxQty.mul(new BN(leverage)).toString()} contracts with ${leverage}x leverage)`));
       }
       process.exit(1);
     }
@@ -122,12 +128,13 @@ export async function sellCommand(options: SellOptions): Promise<void> {
     // Display position summary
     spinner.stop();
     console.log();
-    console.log(chalk.cyan('  Position Summary:'));
+    console.log(chalk.cyan('  Trade Summary:'));
+    console.log(chalk.gray(`    Order type: ${isMarketOrder ? chalk.yellow('Market') : chalk.green('Limit')}`));
     console.log(chalk.gray(`    Mode: ${validation.mode === 'spot' ? chalk.green('Spot (1x)') : chalk.yellow(`Margin (${leverage}x)`)}`));
-    console.log(chalk.gray(`    Quantity: ${quantity.toString()} units`));
-    console.log(chalk.gray(`    Price: ${limitPrice.toString()}`));
-    console.log(chalk.gray(`    Notional: ${validation.notional.toString()} units`));
-    console.log(chalk.gray(`    Required margin: ${validation.requiredMargin.toString()} units`));
+    console.log(chalk.gray(`    Quantity input: ${quantityInput.toString()} units`));
+    console.log(chalk.gray(`    Price: ${price.toString()}`));
+    console.log(chalk.gray(`    Margin committed: ${validation.marginCommitted.toString()} units`));
+    console.log(chalk.cyan(`    → Actual position: ${validation.positionSize.toString()} units (${validation.actualQuantity.toString()} contracts)`));
     console.log(chalk.gray(`    Available equity: ${validation.availableEquity.toString()} units`));
 
     // Show warnings for high leverage
@@ -139,16 +146,20 @@ export async function sellCommand(options: SellOptions): Promise<void> {
       console.log(chalk.yellow(`  ⚠️  Caution: Using ${leverage}x leverage increases risk`));
     }
 
-    // Confirm for margin trades
-    if (!isSpot) {
+    // Confirm for margin trades or market orders
+    if (!isSpot || isMarketOrder) {
       console.log();
       const readline = require('readline').createInterface({
         input: process.stdin,
         output: process.stdout
       });
 
+      const promptMsg = isMarketOrder
+        ? '  Execute market order? (y/N): '
+        : '  Continue with margin trade? (y/N): ';
+
       const answer = await new Promise<string>((resolve) => {
-        readline.question(chalk.yellow('  Continue with margin trade? (y/N): '), resolve);
+        readline.question(chalk.yellow(promptMsg), resolve);
       });
       readline.close();
 
@@ -161,12 +172,12 @@ export async function sellCommand(options: SellOptions): Promise<void> {
     console.log();
     spinner.start('Building sell transaction...');
 
-    // Build sell instruction (v0 atomic fill) - uses network config for slab program
+    // Build sell instruction with ACTUAL quantity (leveraged)
     const sellIx = client.buildSellInstruction(
       wallet.publicKey,
       slabMarket,
-      quantity,
-      limitPrice,
+      validation.actualQuantity,  // Use leveraged quantity!
+      price,
       config.slabProgramId
     );
 
@@ -182,12 +193,14 @@ export async function sellCommand(options: SellOptions): Promise<void> {
     );
 
     spinner.succeed();
-    displaySuccess('Sell order executed successfully!');
+    displaySuccess(`Sell order executed successfully!`);
 
     console.log(chalk.gray(`  Signature: ${signature}`));
     console.log(chalk.gray(`  Explorer: ${getExplorerUrl(signature, options.network || 'mainnet-beta')}`));
     console.log();
-    console.log(chalk.cyan('  Note: v0 uses atomic fills - order executed immediately or failed'));
+    console.log(chalk.cyan(`  Position opened: ${validation.actualQuantity.toString()} contracts`));
+    console.log(chalk.cyan(`  Margin used: ${validation.marginCommitted.toString()} units`));
+    console.log(chalk.cyan(`  Effective leverage: ${leverage}x`));
   } catch (error: any) {
     spinner.fail();
     displayError(`Sell order failed: ${error.message}`);

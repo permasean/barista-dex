@@ -59,10 +59,10 @@ program
 
 program
   .command('buy')
-  .description('Execute a buy order (atomic fill - no resting orders in v0)')
+  .description('Execute a buy order (market or limit)')
   .requiredOption('--slab <address>', 'Slab market address')
-  .requiredOption('-q, --quantity <amount>', 'Quantity to buy (in base units)')
-  .requiredOption('-p, --price <price>', 'Limit price (maximum price willing to pay)')
+  .requiredOption('-q, --quantity <amount>', 'Margin to commit (in base units). With leverage, actual position = quantity × leverage')
+  .option('-p, --price <price>', 'Limit price (optional, omit for market order)')
   .option('-l, --leverage <multiplier>', 'Leverage multiplier (e.g., "5x", "10x"). Default: 1x (spot trading)')
   .option('-n, --network <network>', 'Network: devnet, mainnet-beta, or localnet (default: mainnet-beta)')
   .option('-k, --keypair <path>', 'Path to keypair file')
@@ -71,10 +71,10 @@ program
 
 program
   .command('sell')
-  .description('Execute a sell order (atomic fill - no resting orders in v0)')
+  .description('Execute a sell order (market or limit)')
   .requiredOption('--slab <address>', 'Slab market address')
-  .requiredOption('-q, --quantity <amount>', 'Quantity to sell (in base units)')
-  .requiredOption('-p, --price <price>', 'Limit price (minimum price willing to accept)')
+  .requiredOption('-q, --quantity <amount>', 'Margin to commit (in base units). With leverage, actual position = quantity × leverage')
+  .option('-p, --price <price>', 'Limit price (optional, omit for market order)')
   .option('-l, --leverage <multiplier>', 'Leverage multiplier (e.g., "5x", "10x"). Default: 1x (spot trading)')
   .option('-n, --network <network>', 'Network: devnet, mainnet-beta, or localnet (default: mainnet-beta)')
   .option('-k, --keypair <path>', 'Path to keypair file')
