@@ -16,19 +16,23 @@ export type NetworkName = 'mainnet-beta' | 'devnet' | 'localnet';
 
 /**
  * Network configurations with hardcoded program IDs
+ * TODO: Update with actual deployed program IDs after deployment
  */
 export const NETWORK_CONFIGS: Record<NetworkName, NetworkConfig> = {
   'mainnet-beta': {
+    // TODO: Replace with actual mainnet-beta deployed program IDs
     routerProgramId: new PublicKey('RoutR1VdCpHqj89WEMJhb6TkGT9cPfr1rVjhM3e2YQr'),
     slabProgramId: new PublicKey('SLabZ6PsDLh2X6HzEoqxFDMqCVcJXDKCNEYuPzUvGPk'),
     rpcUrl: 'https://api.mainnet-beta.solana.com',
   },
   'devnet': {
+    // TODO: Replace with actual devnet deployed program IDs
     routerProgramId: new PublicKey('RoutR1VdCpHqj89WEMJhb6TkGT9cPfr1rVjhM3e2YQr'),
     slabProgramId: new PublicKey('SLabZ6PsDLh2X6HzEoqxFDMqCVcJXDKCNEYuPzUvGPk'),
     rpcUrl: 'https://api.devnet.solana.com',
   },
   'localnet': {
+    // TODO: Replace with actual localnet deployed program IDs
     routerProgramId: new PublicKey('RoutR1VdCpHqj89WEMJhb6TkGT9cPfr1rVjhM3e2YQr'),
     slabProgramId: new PublicKey('SLabZ6PsDLh2X6HzEoqxFDMqCVcJXDKCNEYuPzUvGPk'),
     rpcUrl: 'http://localhost:8899',

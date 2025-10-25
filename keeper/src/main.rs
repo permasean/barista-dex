@@ -1,14 +1,19 @@
-//! Percolator Liquidation Keeper
+//! Percolator Keeper
 //!
-//! Off-chain service that monitors portfolio health and triggers liquidations
-//! for undercollateralized users.
+//! Off-chain services for Percolator DEX:
+//! - Liquidation bot (monitors portfolio health, triggers liquidations)
+//! - Oracle management (init, update, crank for custom oracles)
 
+mod cli;
 mod config;
 mod health;
+mod oracle;
 mod priority_queue;
 mod tx_builder;
 
 use anyhow::{Context, Result};
+use clap::Parser;
+use cli::{Cli, Commands, OracleCommands};
 use config::Config;
 use priority_queue::{HealthQueue, UserHealth};
 use solana_client::rpc_client::RpcClient;
@@ -25,11 +30,26 @@ async fn main() -> Result<()> {
     // Initialize logging
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
+    // Parse CLI arguments
+    let cli = Cli::parse();
+
+    match cli.command {
+        Commands::Liquidate { config: config_path } => {
+            run_liquidation_keeper(&config_path).await
+        }
+        Commands::Oracle { subcommand } => {
+            run_oracle_command(subcommand).await
+        }
+    }
+}
+
+/// Run liquidation keeper service
+async fn run_liquidation_keeper(config_path: &str) -> Result<()> {
     log::info!("Starting Percolator Liquidation Keeper");
 
     // Load configuration
-    let config = Config::load().unwrap_or_else(|_| {
-        log::warn!("Failed to load config, using default devnet config");
+    let config = Config::load_from(config_path).unwrap_or_else(|_| {
+        log::warn!("Failed to load config from {}, using default devnet config", config_path);
         Config::default_devnet()
     });
 
@@ -206,4 +226,201 @@ async fn update_health_queue(
     queue.push(dummy_user);
 
     Ok(())
+}
+
+/// Run oracle management command
+async fn run_oracle_command(subcommand: OracleCommands) -> Result<()> {
+    match subcommand {
+        OracleCommands::Init {
+            instrument,
+            price,
+            rpc_url,
+            keypair,
+            authority,
+            oracle_program,
+        } => {
+            let client = RpcClient::new_with_commitment(rpc_url, CommitmentConfig::confirmed());
+
+            let keypair_path = keypair.unwrap_or_else(|| {
+                format!("{}/.config/solana/id.json", std::env::var("HOME").unwrap())
+            });
+            let payer = load_keypair(&keypair_path)?;
+
+            let authority_kp = if let Some(auth_path) = authority {
+                load_keypair(&auth_path)?
+            } else {
+                load_keypair(&keypair_path)?
+            };
+
+            let oracle_program_id = oracle_program
+                .map(|s| s.parse::<Pubkey>())
+                .transpose()
+                .context("Invalid oracle program ID")?
+                .unwrap_or_else(|| {
+                    "oracLEqeDFu8PPCKMn1djT5wEZyejxLJ8T4KbvdR9Ge".parse().unwrap()
+                });
+
+            let oracle_address = oracle::commands::init_oracle(
+                &client,
+                &payer,
+                &authority_kp,
+                &oracle_program_id,
+                &instrument,
+                price,
+            )?;
+
+            println!("\n💡 Tip: Set environment variable for future commands:");
+            println!("  export PERCOLATOR_ORACLE={}", oracle_address);
+
+            Ok(())
+        }
+
+        OracleCommands::Update {
+            oracle,
+            price,
+            confidence,
+            rpc_url,
+            keypair,
+            authority,
+            oracle_program,
+        } => {
+            let client = RpcClient::new_with_commitment(rpc_url, CommitmentConfig::confirmed());
+
+            let keypair_path = keypair.unwrap_or_else(|| {
+                format!("{}/.config/solana/id.json", std::env::var("HOME").unwrap())
+            });
+            let payer = load_keypair(&keypair_path)?;
+
+            let authority_kp = if let Some(auth_path) = authority {
+                load_keypair(&auth_path)?
+            } else {
+                load_keypair(&keypair_path)?
+            };
+
+            let oracle_program_id = oracle_program
+                .map(|s| s.parse::<Pubkey>())
+                .transpose()
+                .context("Invalid oracle program ID")?
+                .unwrap_or_else(|| {
+                    "oracLEqeDFu8PPCKMn1djT5wEZyejxLJ8T4KbvdR9Ge".parse().unwrap()
+                });
+
+            let oracle_address = oracle.parse::<Pubkey>()
+                .context("Invalid oracle address")?;
+
+            oracle::commands::update_oracle(
+                &client,
+                &payer,
+                &authority_kp,
+                &oracle_program_id,
+                &oracle_address,
+                price,
+                confidence,
+            )?;
+
+            Ok(())
+        }
+
+        OracleCommands::Show { oracle, rpc_url } => {
+            let client = RpcClient::new_with_commitment(rpc_url, CommitmentConfig::confirmed());
+
+            let oracle_address = oracle.parse::<Pubkey>()
+                .context("Invalid oracle address")?;
+
+            oracle::commands::show_oracle(&client, &oracle_address)?;
+
+            Ok(())
+        }
+
+        OracleCommands::Crank {
+            oracle,
+            instrument,
+            interval,
+            source,
+            rpc_url,
+            keypair,
+            authority,
+            oracle_program,
+        } => {
+            let client = RpcClient::new_with_commitment(rpc_url.clone(), CommitmentConfig::confirmed());
+
+            let keypair_path = keypair.unwrap_or_else(|| {
+                format!("{}/.config/solana/id.json", std::env::var("HOME").unwrap())
+            });
+            let payer = load_keypair(&keypair_path)?;
+
+            let authority_kp = if let Some(auth_path) = authority {
+                load_keypair(&auth_path)?
+            } else {
+                load_keypair(&keypair_path)?
+            };
+
+            let oracle_program_id = oracle_program
+                .map(|s| s.parse::<Pubkey>())
+                .transpose()
+                .context("Invalid oracle program ID")?
+                .unwrap_or_else(|| {
+                    "oracLEqeDFu8PPCKMn1djT5wEZyejxLJ8T4KbvdR9Ge".parse().unwrap()
+                });
+
+            let oracle_address = oracle.parse::<Pubkey>()
+                .context("Invalid oracle address")?;
+
+            let price_source = oracle::price_sources::PriceSource::from_str(&source)?;
+
+            println!("═══════════════════════════════════════════════════");
+            println!("            ORACLE CRANK SERVICE");
+            println!("═══════════════════════════════════════════════════\n");
+            println!("🔧 Configuration:");
+            println!("  Oracle:         {}", oracle_address);
+            println!("  Instrument:     {}", instrument);
+            println!("  RPC:            {}", rpc_url);
+            println!("  Price Source:   {:?}", price_source);
+            println!("  Update Interval: {}s", interval);
+            println!("\n🚀 Starting crank service...");
+            println!("   Press Ctrl+C to stop\n");
+
+            // Run initial update
+            let price = oracle::price_sources::fetch_price(&instrument, price_source).await?;
+            log::info!("Fetched {}: ${:.2}", instrument, price);
+
+            oracle::commands::update_oracle(
+                &client,
+                &payer,
+                &authority_kp,
+                &oracle_program_id,
+                &oracle_address,
+                price,
+                None,
+            )?;
+
+            // Schedule periodic updates
+            let mut interval_timer = time::interval(Duration::from_secs(interval));
+
+            loop {
+                interval_timer.tick().await;
+
+                match oracle::price_sources::fetch_price(&instrument, price_source).await {
+                    Ok(price) => {
+                        log::info!("Fetched {}: ${:.2}", instrument, price);
+
+                        if let Err(e) = oracle::commands::update_oracle(
+                            &client,
+                            &payer,
+                            &authority_kp,
+                            &oracle_program_id,
+                            &oracle_address,
+                            price,
+                            None,
+                        ) {
+                            log::error!("Failed to update oracle: {}", e);
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("Failed to fetch price: {}", e);
+                    }
+                }
+            }
+        }
+    }
 }
