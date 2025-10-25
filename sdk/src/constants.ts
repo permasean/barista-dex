@@ -16,20 +16,22 @@ export const RPC_ENDPOINTS: Record<Cluster, string> = {
 
 /**
  * Program IDs for Router program across different clusters
+ * TODO: Update with actual deployed program IDs after deployment
  */
 export const ROUTER_PROGRAM_IDS: Record<Cluster, PublicKey> = {
-  devnet: new PublicKey('RoutR1VdCpHqj89WEMJhb6TkGT9cPfr1rVjhM3e2YQr'), // Replace with actual devnet program ID
-  'mainnet-beta': new PublicKey('RoutR1VdCpHqj89WEMJhb6TkGT9cPfr1rVjhM3e2YQr'), // Replace with actual mainnet program ID
-  localnet: new PublicKey('RoutR1VdCpHqj89WEMJhb6TkGT9cPfr1rVjhM3e2YQr'), // Replace with actual localnet program ID
+  devnet: new PublicKey('RoutR1VdCpHqj89WEMJhb6TkGT9cPfr1rVjhM3e2YQr'), // TODO: Replace with actual devnet program ID
+  'mainnet-beta': new PublicKey('RoutR1VdCpHqj89WEMJhb6TkGT9cPfr1rVjhM3e2YQr'), // TODO: Replace with actual mainnet program ID
+  localnet: new PublicKey('RoutR1VdCpHqj89WEMJhb6TkGT9cPfr1rVjhM3e2YQr'), // TODO: Replace with actual localnet program ID
 };
 
 /**
  * Program IDs for Slab program across different clusters
+ * TODO: Update with actual deployed program IDs after deployment
  */
 export const SLAB_PROGRAM_IDS: Record<Cluster, PublicKey> = {
-  devnet: new PublicKey('SLaBZ6PsDLh2X6HzEoqxFDMqCVcJXDKCNEYuPzUvGPk'), // Replace with actual devnet program ID
-  'mainnet-beta': new PublicKey('SLaBZ6PsDLh2X6HzEoqxFDMqCVcJXDKCNEYuPzUvGPk'), // Replace with actual mainnet program ID
-  localnet: new PublicKey('SLaBZ6PsDLh2X6HzEoqxFDMqCVcJXDKCNEYuPzUvGPk'), // Replace with actual localnet program ID
+  devnet: new PublicKey('SLabZ6PsDLh2X6HzEoqxFDMqCVcJXDKCNEYuPzUvGPk'), // TODO: Replace with actual devnet program ID
+  'mainnet-beta': new PublicKey('SLabZ6PsDLh2X6HzEoqxFDMqCVcJXDKCNEYuPzUvGPk'), // TODO: Replace with actual mainnet program ID
+  localnet: new PublicKey('SLabZ6PsDLh2X6HzEoqxFDMqCVcJXDKCNEYuPzUvGPk'), // TODO: Replace with actual localnet program ID
 };
 
 /**
