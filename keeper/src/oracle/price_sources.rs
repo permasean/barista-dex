@@ -53,13 +53,16 @@ struct CoinGeckoPrice {
 
 async fn fetch_from_coingecko(instrument: &str) -> Result<f64> {
     // Map instrument names to CoinGecko IDs
-    let coin_id = match instrument.split(&['-', '/'][..]).next() {
-        Some("BTC") => "bitcoin",
-        Some("ETH") => "ethereum",
-        Some("SOL") => "solana",
-        Some("USDC") => "usd-coin",
-        Some("USDT") => "tether",
-        _ => instrument.to_lowercase().as_str(),
+    let base_symbol = instrument.split(&['-', '/'][..]).next()
+        .unwrap_or(instrument);
+
+    let coin_id = match base_symbol {
+        "BTC" => "bitcoin",
+        "ETH" => "ethereum",
+        "SOL" => "solana",
+        "USDC" => "usd-coin",
+        "USDT" => "tether",
+        _ => base_symbol,
     };
 
     let url = format!(
